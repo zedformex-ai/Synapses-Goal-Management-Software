@@ -517,18 +517,15 @@
         renderConfigRequired();
         return;
       }
-      const { data: { session } } = await sb.auth.getSession();
-      state.user = session?.user || null;
       sb.auth.onAuthStateChange(async (_event, session) => {
         state.user = session?.user || null;
-        if (state.user) await store.loadAll();
-        renderApp();
+        if (state.user) {
+          await store.loadAll();
+          renderApp();
+        }
       });
-      if (!state.user) renderAuth();
-      else {
-        await store.loadAll();
-        renderApp();
-      }
+      state.user = null;
+      renderAuth();
     }
 
     function renderConfigRequired() {
@@ -583,14 +580,41 @@
       const password = form.password.value;
       const notice = $("#authNotice");
       const method = mode === "signup" ? "signUp" : "signInWithPassword";
-      const { error } = await sb.auth[method]({ email, password });
+      const { data, error } = await sb.auth[method]({ email, password });
       if (error) {
         notice.style.display = "block";
         notice.textContent = error.message;
+      } else if (data?.session?.user || data?.user) {
+        state.user = data.session?.user || data.user;
+        notice.style.display = "block";
+        notice.textContent = "Signed in.";
+        await store.loadAll();
+        renderApp();
       } else {
         notice.style.display = "block";
         notice.textContent = mode === "signup" ? "Account created. Check email if confirmation is enabled." : "Signed in.";
       }
+    }
+
+    async function signOutNow() {
+      try {
+        await sb.auth.signOut({ scope: "local" });
+      } catch (_error) {
+        await sb.auth.signOut().catch(() => {});
+      }
+      Object.keys(localStorage).filter(key => key.startsWith("sb-")).forEach(key => localStorage.removeItem(key));
+      state.user = null;
+      state.selected = null;
+      state.selectedRows.clear();
+      state.timer = null;
+      localStorage.removeItem("apex-active-timer");
+      state.data = {
+        goals: [], projects: [], tasks: [], subtasks: [],
+        tags: [], item_tags: [], attachments: [], time_entries: [],
+        task_dependencies: [], activity_log: [], templates: [], user_preferences: []
+      };
+      renderAuth();
+      toast("Signed out");
     }
 
     function renderApp() {
@@ -679,7 +703,7 @@
       $("#globalSearch")?.addEventListener("input", e => { state.filters.q = e.target.value.trim(); renderView(); icons(); });
       $("#themeToggle")?.addEventListener("click", toggleTheme);
       $("#shortcutHelp")?.addEventListener("click", openShortcuts);
-      $("#signOut")?.addEventListener("click", () => sb.auth.signOut());
+      $("#signOut")?.addEventListener("click", signOutNow);
       $("#timerPill")?.addEventListener("click", () => state.timer && openItem("task", state.timer.task_id));
     }
 
