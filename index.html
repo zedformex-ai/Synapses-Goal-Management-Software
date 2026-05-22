@@ -1,0 +1,1363 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>APEX Personal Command Platform</title>
+  <script>
+    (function () {
+      var theme = localStorage.getItem("apex-theme") || "dark";
+      document.documentElement.dataset.theme = theme === "system"
+        ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
+        : theme;
+    })();
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    :root {
+      --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      --radius: 8px;
+      --shadow: 0 20px 80px rgba(0,0,0,.28);
+      --critical: #e24b4a;
+      --high: #ef9f27;
+      --medium: #1d9e75;
+      --low: #378add;
+      --backlog: #888780;
+      --ok: #639922;
+      --risk: #d85a30;
+    }
+    [data-theme="dark"] {
+      --bg: #0f0f11;
+      --surface: #17171a;
+      --surface-2: #1f1f24;
+      --surface-3: #29292f;
+      --border: #313139;
+      --border-soft: rgba(255,255,255,.07);
+      --text: #f0efe8;
+      --muted: #aaa79e;
+      --faint: #6e6b64;
+      --input: #121215;
+      --accent: #d5bf75;
+      --accent-2: #7aa889;
+      --chip: rgba(255,255,255,.06);
+    }
+    [data-theme="light"] {
+      --bg: #f6f5f1;
+      --surface: #ffffff;
+      --surface-2: #eeeeea;
+      --surface-3: #e5e3dd;
+      --border: #d3d0c8;
+      --border-soft: rgba(0,0,0,.08);
+      --text: #1f1e1a;
+      --muted: #666159;
+      --faint: #8e887d;
+      --input: #faf9f5;
+      --accent: #765e17;
+      --accent-2: #1d7657;
+      --chip: rgba(0,0,0,.05);
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: var(--font-sans);
+      color: var(--text);
+      background: var(--bg);
+      font-size: 14px;
+      line-height: 1.55;
+      overflow: hidden;
+      letter-spacing: 0;
+    }
+    button, input, select, textarea { font: inherit; }
+    button { cursor: pointer; }
+    .app { display: grid; grid-template-columns: 260px minmax(0, 1fr); height: 100vh; }
+    .sidebar {
+      border-right: 1px solid var(--border);
+      background: var(--surface);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; padding: 8px 8px 14px; }
+    .mark {
+      width: 32px; height: 32px; border: 1px solid var(--border);
+      display: grid; place-items: center; border-radius: var(--radius);
+      background: var(--surface-2); color: var(--accent);
+      font-weight: 800; letter-spacing: 0;
+    }
+    .brand h1 { font-size: 15px; margin: 0; font-weight: 650; }
+    .brand span { color: var(--muted); font-size: 12px; display: block; margin-top: -2px; }
+    .nav { display: grid; gap: 4px; }
+    .nav button, .bottom-nav button {
+      border: 0; background: transparent; color: var(--muted);
+      display: flex; align-items: center; gap: 10px; width: 100%;
+      min-height: 36px; padding: 8px 10px; border-radius: var(--radius);
+      text-align: left;
+    }
+    .nav button:hover, .nav button.active { background: var(--surface-2); color: var(--text); }
+    .nav .count { margin-left: auto; font-size: 11px; color: var(--faint); }
+    .sidebar-section { margin-top: 16px; min-height: 0; }
+    .sidebar-title { color: var(--faint); font-size: 11px; text-transform: uppercase; margin: 0 8px 7px; }
+    .tree { overflow: auto; padding-right: 2px; max-height: 34vh; }
+    .tree-item {
+      display: flex; align-items: center; gap: 8px; min-height: 30px;
+      padding: 5px 8px; border-radius: var(--radius); color: var(--muted);
+    }
+    .tree-item:hover { background: var(--surface-2); color: var(--text); }
+    .dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; }
+    .spacer { flex: 1; }
+    .quick {
+      margin-top: auto;
+      display: grid;
+      gap: 8px;
+      padding-top: 12px;
+    }
+    .main { display: grid; grid-template-rows: 58px minmax(0,1fr); min-width: 0; }
+    .topbar {
+      display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+      border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--bg) 72%, var(--surface));
+    }
+    .crumbs { min-width: 160px; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .searchbox { position: relative; flex: 1; max-width: 640px; }
+    .searchbox i, .searchbox svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--faint); }
+    .searchbox input {
+      width: 100%; height: 38px; border-radius: var(--radius); border: 1px solid var(--border);
+      background: var(--input); color: var(--text); padding: 0 12px 0 38px; outline: none;
+    }
+    .searchbox input:focus { border-color: color-mix(in srgb, var(--accent) 60%, var(--border)); }
+    .timer-pill {
+      display: none; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 99px;
+      background: rgba(29,158,117,.12); color: var(--accent-2); border: 1px solid rgba(29,158,117,.32);
+      font-family: var(--font-mono); font-size: 12px;
+    }
+    .timer-pill.running { display: inline-flex; }
+    .content-wrap { display: grid; grid-template-columns: minmax(0,1fr) 0; min-height: 0; transition: grid-template-columns .22s ease; }
+    .content-wrap.detail-open { grid-template-columns: minmax(0,1fr) 380px; }
+    .content { overflow: auto; padding: 20px; }
+    .detail {
+      overflow: auto; border-left: 1px solid var(--border); background: var(--surface);
+      transform: translateX(100%); transition: transform .22s ease; min-width: 0;
+    }
+    .content-wrap.detail-open .detail { transform: translateX(0); }
+    .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+    .page-title { margin: 0; font-size: 22px; font-weight: 650; }
+    .page-subtitle { margin: 3px 0 0; color: var(--muted); }
+    .actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .btn {
+      border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+      height: 36px; padding: 0 12px; border-radius: var(--radius); display: inline-flex;
+      align-items: center; justify-content: center; gap: 8px; white-space: nowrap;
+    }
+    .btn:hover { background: var(--surface-3); }
+    .btn.primary { background: var(--accent); color: var(--bg); border-color: transparent; font-weight: 650; }
+    .btn.icon { width: 36px; padding: 0; }
+    .btn.danger { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 40%, var(--border)); }
+    .grid { display: grid; gap: 12px; }
+    .grid.kpi { grid-template-columns: repeat(4, minmax(0,1fr)); margin-bottom: 12px; }
+    .card {
+      border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--surface); padding: 14px; min-width: 0;
+    }
+    .kpi-card { min-height: 112px; display: flex; flex-direction: column; justify-content: space-between; }
+    .kpi-label { color: var(--muted); font-size: 12px; display: flex; justify-content: space-between; align-items: center; }
+    .kpi-value { font-family: var(--font-mono); font-size: 30px; line-height: 1; margin-top: 10px; }
+    .kpi-change { color: var(--faint); font-size: 12px; margin-top: 8px; }
+    .dashboard-grid { display: grid; grid-template-columns: 1.25fr .75fr; gap: 12px; }
+    .chart-card { height: 300px; }
+    .chart-card canvas { width: 100% !important; height: 230px !important; }
+    .section-title { margin: 0 0 12px; font-size: 16px; font-weight: 650; }
+    .table-toolbar {
+      display: flex; justify-content: space-between; align-items: center; gap: 12px;
+      padding: 10px; border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--surface); margin-bottom: 10px;
+    }
+    .filters { display: flex; flex-wrap: wrap; gap: 8px; }
+    .select, .input, .textarea {
+      border: 1px solid var(--border); background: var(--input); color: var(--text);
+      border-radius: var(--radius); min-height: 36px; padding: 0 10px; outline: none;
+    }
+    .textarea { min-height: 86px; padding: 10px; resize: vertical; width: 100%; }
+    .table-wrap { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); overflow: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 940px; }
+    th, td { border-bottom: 1px solid var(--border-soft); padding: 11px 12px; text-align: left; vertical-align: middle; }
+    th { color: var(--muted); font-size: 12px; font-weight: 550; background: var(--surface-2); position: sticky; top: 0; z-index: 1; }
+    tr:hover td { background: color-mix(in srgb, var(--surface-2) 72%, transparent); }
+    .title-cell { display: flex; gap: 9px; align-items: center; min-width: 280px; }
+    .title-cell button { color: var(--text); background: transparent; border: 0; padding: 0; text-align: left; font-weight: 560; }
+    .subline { color: var(--faint); font-size: 12px; margin-top: 2px; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 5px; min-height: 22px;
+      border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px;
+      background: var(--chip); color: var(--muted); font-size: 12px; white-space: nowrap;
+    }
+    .badge.critical { color: var(--critical); border-color: rgba(226,75,74,.35); }
+    .badge.high { color: var(--high); border-color: rgba(239,159,39,.35); }
+    .badge.medium { color: var(--medium); border-color: rgba(29,158,117,.35); }
+    .badge.low { color: var(--low); border-color: rgba(55,138,221,.35); }
+    .badge.backlog { color: var(--backlog); }
+    .progress { height: 8px; background: var(--surface-3); border-radius: 999px; overflow: hidden; min-width: 100px; }
+    .progress span { display: block; height: 100%; background: var(--accent-2); }
+    .list { display: grid; gap: 8px; }
+    .list-row {
+      border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius);
+      padding: 11px 12px; display: flex; justify-content: space-between; gap: 12px; align-items: center;
+    }
+    .kanban { display: grid; grid-template-columns: repeat(5, minmax(245px, 1fr)); gap: 12px; overflow-x: auto; padding-bottom: 12px; }
+    .kanban-col { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); min-height: 420px; display: flex; flex-direction: column; }
+    .kanban-head { padding: 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); color: var(--muted); }
+    .kanban-list { padding: 10px; display: grid; gap: 10px; min-height: 360px; align-content: start; }
+    .kanban-card { padding: 11px; border: 1px solid var(--border); background: var(--surface-2); border-radius: var(--radius); cursor: grab; }
+    .kanban-card:active { cursor: grabbing; }
+    .calendar { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    .day { min-height: 124px; background: var(--surface); padding: 9px; }
+    .day.muted { background: color-mix(in srgb, var(--surface) 80%, var(--bg)); color: var(--faint); }
+    .day-num { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+    .cal-item { display: block; margin: 4px 0; padding: 4px 6px; border-radius: 6px; font-size: 12px; background: var(--surface-2); color: var(--text); border-left: 3px solid var(--accent-2); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .heatmap { display: grid; grid-template-columns: repeat(15, 1fr); gap: 4px; }
+    .heat { aspect-ratio: 1; border-radius: 4px; background: var(--surface-3); }
+    .heat.l1 { background: rgba(99,153,34,.30); } .heat.l2 { background: rgba(99,153,34,.50); }
+    .heat.l3 { background: rgba(99,153,34,.70); } .heat.l4 { background: rgba(99,153,34,.95); }
+    .detail-inner { padding: 16px; }
+    .detail-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
+    .detail h2 { font-size: 18px; margin: 0; line-height: 1.25; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .form-row { display: grid; gap: 5px; margin-bottom: 10px; }
+    label { color: var(--muted); font-size: 12px; }
+    .modal-backdrop {
+      position: fixed; inset: 0; display: none; place-items: center; background: rgba(0,0,0,.54);
+      z-index: 50; padding: 20px;
+    }
+    .modal-backdrop.open { display: grid; }
+    .modal {
+      width: min(720px, 100%); max-height: min(760px, 92vh); overflow: auto;
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);
+    }
+    .modal-head, .modal-body, .modal-foot { padding: 16px; }
+    .modal-head { border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+    .modal-foot { border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+    .auth {
+      min-height: 100vh; display: grid; place-items: center; padding: 24px; background: var(--bg);
+    }
+    .auth-card { width: min(460px, 100%); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 22px; }
+    .auth-card h1 { margin: 0 0 4px; }
+    .notice { border: 1px solid rgba(239,159,39,.38); background: rgba(239,159,39,.10); color: var(--high); padding: 10px; border-radius: var(--radius); font-size: 13px; margin: 10px 0; }
+    .toast-stack { position: fixed; right: 16px; bottom: 16px; display: grid; gap: 8px; z-index: 80; }
+    .toast { background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); padding: 10px 12px; border-radius: var(--radius); min-width: 240px; }
+    .empty { color: var(--muted); border: 1px dashed var(--border); border-radius: var(--radius); padding: 28px; text-align: center; background: var(--surface); }
+    .bottom-nav { display: none; }
+    @media (max-width: 1100px) {
+      .grid.kpi { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .dashboard-grid { grid-template-columns: 1fr; }
+      .content-wrap.detail-open { grid-template-columns: minmax(0,1fr); }
+      .detail { position: fixed; right: 0; top: 58px; bottom: 0; width: min(420px, 100%); z-index: 30; box-shadow: var(--shadow); }
+    }
+    @media (max-width: 760px) {
+      body { overflow: auto; }
+      .app { grid-template-columns: 1fr; height: auto; min-height: 100vh; padding-bottom: 62px; }
+      .sidebar { display: none; }
+      .main { min-height: 100vh; grid-template-rows: auto minmax(0,1fr); }
+      .topbar { position: sticky; top: 0; z-index: 20; padding: 8px; }
+      .crumbs { display: none; }
+      .content { padding: 12px; overflow: visible; }
+      .page-head { flex-direction: column; }
+      .grid.kpi { grid-template-columns: 1fr; }
+      .dashboard-grid { gap: 10px; }
+      .table-toolbar { flex-direction: column; align-items: stretch; }
+      .filters, .actions { width: 100%; }
+      .filters > *, .actions > .btn { flex: 1; }
+      .kanban { grid-template-columns: repeat(5, 82vw); }
+      .calendar { min-width: 720px; }
+      .calendar-scroll { overflow-x: auto; }
+      .form-grid { grid-template-columns: 1fr; }
+      .detail { top: 0; width: 100%; }
+      .bottom-nav {
+        position: fixed; left: 0; right: 0; bottom: 0; height: 60px;
+        display: grid; grid-template-columns: repeat(5, 1fr); background: var(--surface);
+        border-top: 1px solid var(--border); z-index: 40;
+      }
+      .bottom-nav button { justify-content: center; padding: 6px 0; flex-direction: column; gap: 2px; font-size: 11px; }
+      .bottom-nav button.active { color: var(--text); background: var(--surface-2); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="toastStack" class="toast-stack"></div>
+  <div id="quickModal" class="modal-backdrop" role="dialog" aria-modal="true"></div>
+  <div id="shortcutModal" class="modal-backdrop" role="dialog" aria-modal="true"></div>
+
+  <script>
+    "use strict";
+
+    const APEX_CONFIG = {
+      SUPABASE_URL: "PASTE_YOUR_SUPABASE_URL_HERE",
+      SUPABASE_ANON_KEY: "PASTE_YOUR_SUPABASE_ANON_KEY_HERE",
+      STORAGE_BUCKET: "apex-attachments",
+      APP_NAME: "APEX"
+    };
+
+    const configured = /^https:\/\/.+\.supabase\.co$/.test(APEX_CONFIG.SUPABASE_URL) && !APEX_CONFIG.SUPABASE_ANON_KEY.startsWith("PASTE_");
+    const sb = configured ? supabase.createClient(APEX_CONFIG.SUPABASE_URL, APEX_CONFIG.SUPABASE_ANON_KEY) : null;
+    const $ = (sel, root = document) => root.querySelector(sel);
+    const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+    const nowISO = () => new Date().toISOString();
+    const todayISO = () => new Date().toISOString().slice(0, 10);
+    const uid = () => crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random());
+    const fmtDate = d => d ? new Date(d + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "No date";
+    const clamp = (n, min, max) => Math.max(min, Math.min(max, Number(n || 0)));
+    const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[c]));
+
+    const TABLES = {
+      goal: "goals",
+      project: "projects",
+      task: "tasks",
+      subtask: "subtasks"
+    };
+    const LEVELS = ["goal", "project", "task", "subtask"];
+    const STATUSES = [
+      ["not_started", "Not Started"],
+      ["in_progress", "In Progress"],
+      ["waiting", "Waiting"],
+      ["blocked", "Blocked"],
+      ["completed", "Completed"],
+      ["archived", "Archived"]
+    ];
+    const BOARD_STATUSES = STATUSES.slice(0, 5);
+    const PRIORITIES = [
+      ["critical", "Critical"],
+      ["high", "High"],
+      ["medium", "Medium"],
+      ["low", "Low"],
+      ["backlog", "Someday / Backlog"]
+    ];
+    const TYPES = [
+      ["creation", "Creation"],
+      ["iteration", "Iteration"],
+      ["monitoring", "Monitoring"],
+      ["expansion", "Expansion"],
+      ["planning", "Planning"],
+      ["communication", "Communication"],
+      ["follow_up", "Follow-Up"],
+      ["quick_review", "Quick Review"],
+      ["elimination", "Elimination"]
+    ];
+    const FREQS = [
+      ["once", "Once"],
+      ["hourly", "Hourly"],
+      ["multiple_daily", "Multiple Times Per Day"],
+      ["daily", "Daily"],
+      ["weekly", "Weekly"],
+      ["fortnightly", "Fortnightly"],
+      ["monthly", "Monthly"],
+      ["quarterly", "Quarterly"],
+      ["semi_annually", "Semi-Annually"],
+      ["annually", "Annually"]
+    ];
+
+    const state = {
+      user: null,
+      view: localStorage.getItem("apex-view") || "dashboard",
+      filters: { q: "", status: "", priority: "", goal: "", project: "" },
+      selected: null,
+      selectedRows: new Set(),
+      theme: localStorage.getItem("apex-theme") || "dark",
+      data: {
+        goals: [], projects: [], tasks: [], subtasks: [],
+        tags: [], item_tags: [], attachments: [], time_entries: [],
+        task_dependencies: [], activity_log: [], templates: [], user_preferences: []
+      },
+      charts: {},
+      timer: JSON.parse(localStorage.getItem("apex-active-timer") || "null"),
+      calendarDate: new Date()
+    };
+
+    const demoSeed = () => {
+      const g1 = { id: uid(), user_id: "demo", title: "Build Personal Operating System", description: "A command center for goals, projects, and daily execution.", color: "#d5bf75", priority: "critical", status: "in_progress", item_type: "creation", progress: 62, progress_mode: "auto", due_date: addDays(28), due_time: "17:00", deadline_freq: "once", estimated_hours: 80, actual_hours: 27, notes: "", sort_order: 1, pinned: true, created_at: nowISO(), updated_at: nowISO() };
+      const g2 = { id: uid(), user_id: "demo", title: "Health Systems", description: "Strength, sleep, nutrition, and weekly review rituals.", color: "#1d9e75", priority: "high", status: "in_progress", item_type: "monitoring", progress: 40, progress_mode: "auto", due_date: addDays(90), due_time: "09:00", deadline_freq: "weekly", estimated_hours: 40, actual_hours: 12, notes: "", sort_order: 2, pinned: false, created_at: nowISO(), updated_at: nowISO() };
+      const p1 = { id: uid(), user_id: "demo", goal_id: g1.id, title: "APEX v1 Launch", description: "Single-file app, Supabase backend, GitHub Pages deployment.", color: "#378add", priority: "critical", status: "in_progress", item_type: "creation", progress: 55, progress_mode: "auto", due_date: addDays(14), due_time: "18:00", deadline_freq: "once", estimated_hours: 42, actual_hours: 20, notes: "", sort_order: 1, pinned: true, created_at: nowISO(), updated_at: nowISO() };
+      const p2 = { id: uid(), user_id: "demo", goal_id: g2.id, title: "Weekly Training Plan", description: "Plan workouts and recovery slots.", color: "#1d9e75", priority: "medium", status: "waiting", item_type: "planning", progress: 30, progress_mode: "manual", due_date: todayISO(), due_time: "20:00", deadline_freq: "weekly", estimated_hours: 6, actual_hours: 2, notes: "", sort_order: 2, pinned: false, created_at: nowISO(), updated_at: nowISO() };
+      const t1 = taskFactory(p1.id, "Finish dashboard analytics", "Build KPI, charts, heatmap and risk widgets.", "critical", "in_progress", addDays(2), 180, 75, true);
+      const t2 = taskFactory(p1.id, "Create Supabase SQL setup", "Schema, indexes, views and RLS policies.", "high", "not_started", todayISO(), 120, 0, false);
+      const t3 = taskFactory(p1.id, "Mobile Kanban QA", "Verify touch drag and action fallback.", "high", "blocked", addDays(-1), 90, 45, false);
+      const t4 = taskFactory(p2.id, "Plan next 4 workouts", "Strength split, recovery, and measurable targets.", "medium", "waiting", addDays(5), 60, 10, false);
+      const s1 = subtaskFactory(t1.id, "Wire KPI calculations", "completed");
+      const s2 = subtaskFactory(t1.id, "Render trend chart", "in_progress");
+      const s3 = subtaskFactory(t2.id, "Write storage policies", "not_started");
+      return {
+        goals: [g1, g2], projects: [p1, p2], tasks: [t1, t2, t3, t4], subtasks: [s1, s2, s3],
+        tags: [], item_tags: [], attachments: [], time_entries: [], task_dependencies: [],
+        activity_log: [], templates: [], user_preferences: []
+      };
+    };
+
+    function addDays(n) {
+      const d = new Date();
+      d.setDate(d.getDate() + n);
+      return d.toISOString().slice(0, 10);
+    }
+    function taskFactory(project_id, title, description, priority, status, due_date, estimated_minutes, actual_minutes, pinned) {
+      return { id: uid(), user_id: "demo", project_id, title, description, priority, status, item_type: "creation", progress: status === "completed" ? 100 : status === "in_progress" ? 55 : 0, progress_mode: "manual", due_date, due_time: "16:00", deadline_freq: "once", estimated_minutes, actual_minutes, notes: "", sort_order: 1, pinned, kanban_column: status, archived_at: null, completed_at: status === "completed" ? nowISO() : null, created_at: nowISO(), updated_at: nowISO() };
+    }
+    function subtaskFactory(task_id, title, status) {
+      return { id: uid(), user_id: "demo", task_id, title, description: "", priority: "medium", status, item_type: "creation", due_date: null, due_time: null, notes: "", sort_order: 1, archived_at: null, completed_at: status === "completed" ? nowISO() : null, created_at: nowISO(), updated_at: nowISO() };
+    }
+
+    const store = {
+      async loadAll() {
+        if (!configured) {
+          const saved = localStorage.getItem("apex-demo-data");
+          state.data = saved ? JSON.parse(saved) : demoSeed();
+          this.persistLocal();
+          return;
+        }
+        const tables = Object.values(TABLES).concat(["tags", "item_tags", "attachments", "time_entries", "task_dependencies", "activity_log", "templates", "user_preferences"]);
+        const results = await Promise.all(tables.map(t => {
+          const query = sb.from(t).select("*");
+          return (t === "item_tags" ? query : query.order("created_at", { ascending: true })).then(r => [t, r]);
+        }));
+        results.forEach(([table, result]) => {
+          if (result.error) throw result.error;
+          state.data[table] = result.data || [];
+        });
+      },
+      persistLocal() {
+        if (!configured) localStorage.setItem("apex-demo-data", JSON.stringify(state.data));
+      },
+      async insert(levelOrTable, row) {
+        const table = TABLES[levelOrTable] || levelOrTable;
+        const payload = normalizeForInsert(table, row);
+        if (!configured) {
+          payload.id ||= uid();
+          payload.user_id ||= "demo";
+          payload.created_at ||= nowISO();
+          payload.updated_at ||= nowISO();
+          state.data[table].push(payload);
+          this.persistLocal();
+          return payload;
+        }
+        const { data, error } = await sb.from(table).insert(payload).select().single();
+        if (error) throw error;
+        state.data[table].push(data);
+        return data;
+      },
+      async update(levelOrTable, id, patch) {
+        const table = TABLES[levelOrTable] || levelOrTable;
+        const clean = normalizeForUpdate(table, { ...patch, updated_at: nowISO() });
+        if (!configured) {
+          const row = state.data[table].find(x => x.id === id);
+          if (row) Object.assign(row, clean);
+          this.persistLocal();
+          return row;
+        }
+        const { data, error } = await sb.from(table).update(clean).eq("id", id).select().single();
+        if (error) throw error;
+        const idx = state.data[table].findIndex(x => x.id === id);
+        if (idx >= 0) state.data[table][idx] = data;
+        return data;
+      },
+      async remove(levelOrTable, id) {
+        return this.update(levelOrTable, id, { archived_at: nowISO(), status: "archived" });
+      },
+      async restore(levelOrTable, id) {
+        return this.update(levelOrTable, id, { archived_at: null, status: "not_started" });
+      },
+      async hardDelete(levelOrTable, id) {
+        const table = TABLES[levelOrTable] || levelOrTable;
+        if (!configured) {
+          state.data[table] = state.data[table].filter(x => x.id !== id);
+          this.persistLocal();
+          return;
+        }
+        const { error } = await sb.from(table).delete().eq("id", id);
+        if (error) throw error;
+        state.data[table] = state.data[table].filter(x => x.id !== id);
+      }
+    };
+
+    function normalizeForInsert(table, row) {
+      const clone = { ...row };
+      delete clone.fts;
+      if (configured) delete clone.id;
+      if (state.user?.id) clone.user_id = state.user.id;
+      return normalizeForUpdate(table, clone);
+    }
+    function normalizeForUpdate(table, row) {
+      const clone = { ...row };
+      delete clone.fts;
+      if (table === "subtasks") {
+        delete clone.progress; delete clone.progress_mode; delete clone.deadline_freq;
+        delete clone.estimated_minutes; delete clone.actual_minutes; delete clone.kanban_column; delete clone.pinned;
+      }
+      return clone;
+    }
+
+    async function init() {
+      document.documentElement.dataset.theme = state.theme === "system"
+        ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
+        : state.theme;
+      if (!configured) {
+        state.user = { id: "demo", email: "demo@local" };
+        await store.loadAll();
+        renderApp();
+        toast("Demo mode active. Add Supabase keys in index.html before deploying.");
+        return;
+      }
+      const { data: { session } } = await sb.auth.getSession();
+      state.user = session?.user || null;
+      sb.auth.onAuthStateChange(async (_event, session) => {
+        state.user = session?.user || null;
+        if (state.user) await store.loadAll();
+        renderApp();
+      });
+      if (!state.user) renderAuth();
+      else {
+        await store.loadAll();
+        renderApp();
+      }
+    }
+
+    function renderAuth() {
+      $("#app").innerHTML = `
+        <main class="auth">
+          <section class="auth-card">
+            <div class="brand" style="padding:0 0 14px">
+              <div class="mark">A</div><div><h1>APEX</h1><span>Personal Command Platform</span></div>
+            </div>
+            <div id="authNotice" class="notice" style="display:none"></div>
+            <form id="authForm" class="grid">
+              <label>Email<input class="input" name="email" type="email" autocomplete="email" required style="width:100%"></label>
+              <label>Password<input class="input" name="password" type="password" autocomplete="current-password" required minlength="6" style="width:100%"></label>
+              <div class="actions">
+                <button class="btn primary" data-auth="signin" type="submit"><i data-lucide="log-in"></i>Sign in</button>
+                <button class="btn" data-auth="signup" type="button"><i data-lucide="user-plus"></i>Create account</button>
+              </div>
+            </form>
+          </section>
+        </main>`;
+      icons();
+      $("#authForm").addEventListener("submit", e => authSubmit(e, "signin"));
+      $('[data-auth="signup"]').addEventListener("click", e => authSubmit(e, "signup"));
+    }
+
+    async function authSubmit(event, mode) {
+      event.preventDefault();
+      const form = $("#authForm");
+      const email = form.email.value.trim();
+      const password = form.password.value;
+      const notice = $("#authNotice");
+      const method = mode === "signup" ? "signUp" : "signInWithPassword";
+      const { error } = await sb.auth[method]({ email, password });
+      if (error) {
+        notice.style.display = "block";
+        notice.textContent = error.message;
+      } else {
+        notice.style.display = "block";
+        notice.textContent = mode === "signup" ? "Account created. Check email if confirmation is enabled." : "Signed in.";
+      }
+    }
+
+    function renderApp() {
+      localStorage.setItem("apex-view", state.view);
+      $("#app").innerHTML = `
+        <div class="app">
+          ${sidebar()}
+          <main class="main">
+            ${topbar()}
+            <div id="contentWrap" class="content-wrap ${state.selected ? "detail-open" : ""}">
+              <section id="content" class="content"></section>
+              <aside id="detail" class="detail"></aside>
+            </div>
+          </main>
+          ${bottomNav()}
+        </div>`;
+      bindShell();
+      renderView();
+      renderDetail();
+      renderTimerPill();
+      icons();
+    }
+
+    function sidebar() {
+      const nav = [
+        ["dashboard", "layout-dashboard", "Dashboard", countOpenTasks()],
+        ["myday", "sun", "My Day", dueToday().length],
+        ["goals", "target", "Goals", active("goals").length],
+        ["projects", "folder-kanban", "Projects", active("projects").length],
+        ["tasks", "check-square", "Tasks", active("tasks").length],
+        ["kanban", "columns-3", "Kanban", countOpenTasks()],
+        ["calendar", "calendar-days", "Calendar", deadlines().length],
+        ["files", "paperclip", "Files", state.data.attachments.length],
+        ["reports", "bar-chart-3", "Reports", ""],
+        ["archive", "archive", "Archive", archivedCount()],
+        ["settings", "settings", "Settings", ""]
+      ];
+      const goalTree = active("goals").slice(0, 12).map(g => `
+        <div class="tree-item" data-open="goal:${g.id}">
+          <span class="dot" style="background:${escapeHtml(g.color || "#888780")}"></span>
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(g.title)}</span>
+        </div>`).join("") || `<div class="empty">No goals yet</div>`;
+      const pinned = allItems().filter(x => x.item.pinned).slice(0, 8).map(x => `
+        <div class="tree-item" data-open="${x.level}:${x.item.id}">
+          <i data-lucide="pin" width="14"></i><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(x.item.title)}</span>
+        </div>`).join("") || `<div class="tree-item"><span>No pinned work</span></div>`;
+      return `
+        <aside class="sidebar">
+          <div class="brand"><div class="mark">A</div><div><h1>APEX</h1><span>Command Platform</span></div></div>
+          <nav class="nav">${nav.map(([id, icon, label, count]) => navButton(id, icon, label, count)).join("")}</nav>
+          <section class="sidebar-section"><p class="sidebar-title">Goals</p><div class="tree">${goalTree}</div></section>
+          <section class="sidebar-section"><p class="sidebar-title">Pinned</p><div class="tree">${pinned}</div></section>
+          <div class="quick">
+            <button class="btn primary" id="quickAdd"><i data-lucide="plus"></i>Quick Capture</button>
+            <button class="btn" id="exportData"><i data-lucide="download"></i>Export Data</button>
+          </div>
+        </aside>`;
+    }
+
+    function navButton(id, icon, label, count) {
+      return `<button class="${state.view === id ? "active" : ""}" data-view="${id}"><i data-lucide="${icon}" width="17"></i><span>${label}</span><span class="count">${count ?? ""}</span></button>`;
+    }
+    function bottomNav() {
+      return `<nav class="bottom-nav">
+        ${[["dashboard","layout-dashboard","Dash"],["myday","sun","Today"],["tasks","check-square","Tasks"],["kanban","columns-3","Board"],["settings","settings","More"]].map(([id,icon,label]) => `
+          <button class="${state.view === id ? "active" : ""}" data-view="${id}"><i data-lucide="${icon}" width="18"></i><span>${label}</span></button>`).join("")}
+      </nav>`;
+    }
+    function topbar() {
+      return `
+        <header class="topbar">
+          <div class="crumbs">${escapeHtml(currentCrumb())}</div>
+          <div class="searchbox"><i data-lucide="search" width="17"></i><input id="globalSearch" placeholder="Search goals, projects, tasks, subtasks" value="${escapeHtml(state.filters.q)}"></div>
+          <button class="timer-pill ${state.timer ? "running" : ""}" id="timerPill"><i data-lucide="timer" width="16"></i><span id="timerText">00:00:00</span></button>
+          <button class="btn icon" id="themeToggle" title="Toggle theme"><i data-lucide="moon-star"></i></button>
+          <button class="btn icon" id="shortcutHelp" title="Shortcuts"><i data-lucide="keyboard"></i></button>
+          ${configured ? `<button class="btn icon" id="signOut" title="Sign out"><i data-lucide="log-out"></i></button>` : ""}
+        </header>`;
+    }
+
+    function bindShell() {
+      $$("[data-view]").forEach(btn => btn.addEventListener("click", () => { state.view = btn.dataset.view; state.selectedRows.clear(); renderApp(); }));
+      $$("[data-open]").forEach(el => el.addEventListener("click", () => openItem(...el.dataset.open.split(":"))));
+      $("#quickAdd")?.addEventListener("click", () => openQuickModal());
+      $("#exportData")?.addEventListener("click", exportData);
+      $("#globalSearch")?.addEventListener("input", e => { state.filters.q = e.target.value.trim(); renderView(); icons(); });
+      $("#themeToggle")?.addEventListener("click", toggleTheme);
+      $("#shortcutHelp")?.addEventListener("click", openShortcuts);
+      $("#signOut")?.addEventListener("click", () => sb.auth.signOut());
+      $("#timerPill")?.addEventListener("click", () => state.timer && openItem("task", state.timer.task_id));
+    }
+
+    function renderView() {
+      const content = $("#content");
+      if (!content) return;
+      const views = {
+        dashboard: renderDashboard,
+        myday: renderMyDay,
+        goals: () => renderTableScreen("goal"),
+        projects: () => renderTableScreen("project"),
+        tasks: () => renderTableScreen("task"),
+        subtasks: () => renderTableScreen("subtask"),
+        kanban: renderKanban,
+        calendar: renderCalendar,
+        files: renderFiles,
+        reports: renderReports,
+        archive: renderArchive,
+        settings: renderSettings
+      };
+      content.innerHTML = (views[state.view] || renderDashboard)();
+      bindContent();
+      icons();
+      if (state.view === "dashboard" || state.view === "reports") renderCharts();
+      if (state.view === "kanban") setupKanban();
+    }
+
+    function renderDashboard() {
+      const m = metrics();
+      return `
+        ${pageHead("Dashboard", "Deadline risk, execution velocity, active timers, and progress rollups.", `<button class="btn primary" id="addFromPage"><i data-lucide="plus"></i>Create</button>`)}
+        <section class="grid kpi">
+          ${kpi("Total Goals", m.goals, "Open strategic outcomes", "target")}
+          ${kpi("Open Tasks", m.openTasks, `${m.overdue} overdue`, "check-square")}
+          ${kpi("Completion Rate", `${m.completionRate}%`, "Across active work", "trending-up")}
+          ${kpi("Time This Week", formatDuration(m.weekSeconds), `${formatDuration(m.todaySeconds)} today`, "timer")}
+          ${kpi("Critical Open", m.critical, "Needs executive attention", "siren")}
+          ${kpi("Deadline Success", `${m.deadlineSuccess}%`, "Completed before due date", "shield-check")}
+          ${kpi("Backlog Size", m.backlog, "Someday / later work", "archive")}
+          ${kpi("Active Timers", state.timer ? 1 : 0, state.timer ? activeTaskTitle() : "No timer running", "activity")}
+        </section>
+        <section class="dashboard-grid">
+          <div class="card chart-card"><h2 class="section-title">Productivity Trend</h2><canvas id="trendChart"></canvas></div>
+          <div class="card chart-card"><h2 class="section-title">Priority Distribution</h2><canvas id="priorityChart"></canvas></div>
+          <div class="card"><h2 class="section-title">Today's Agenda</h2>${compactList(dueToday().concat(active("tasks").filter(t => t.pinned)).slice(0, 8))}</div>
+          <div class="card"><h2 class="section-title">Deadline Radar</h2>${compactList(deadlineRadar().slice(0, 8))}</div>
+          <div class="card"><h2 class="section-title">Completion Heatmap</h2>${heatmap()}</div>
+          <div class="card"><h2 class="section-title">Recently Completed</h2>${compactList(recentCompleted().slice(0, 8))}</div>
+        </section>`;
+    }
+
+    function kpi(label, value, change, icon) {
+      return `<article class="card kpi-card"><div><div class="kpi-label"><span>${label}</span><i data-lucide="${icon}" width="17"></i></div><div class="kpi-value">${value}</div></div><div class="kpi-change">${escapeHtml(change)}</div></article>`;
+    }
+    function pageHead(title, subtitle, action = "") {
+      return `<div class="page-head"><div><h1 class="page-title">${title}</h1><p class="page-subtitle">${subtitle}</p></div><div class="actions">${action}</div></div>`;
+    }
+
+    function renderMyDay() {
+      const items = dueToday().concat(deadlineRadar().filter(t => health(t).level === "overdue")).concat(active("tasks").filter(t => t.status === "in_progress"));
+      return `${pageHead("My Day", "A focused execution surface for today.", `<button class="btn primary" id="addFromPage"><i data-lucide="plus"></i>Add Work</button>`)}
+        <div class="grid" style="grid-template-columns:1fr 1fr">
+          <section class="card"><h2 class="section-title">Agenda</h2>${compactList(uniqueBy(items, "id"))}</section>
+          <section class="card"><h2 class="section-title">Active Timer</h2>${state.timer ? timerCard() : `<div class="empty">No active timer</div>`}</section>
+        </div>`;
+    }
+
+    function renderTableScreen(level) {
+      const title = pluralLabel(level);
+      const rows = filteredItems(level);
+      return `
+        ${pageHead(title, `${rows.length} visible ${title.toLowerCase()} across your command system.`, `<button class="btn primary" id="addFromPage"><i data-lucide="plus"></i>New ${label(level)}</button>`)}
+        ${tableToolbar(level)}
+        <div class="table-wrap">${rows.length ? itemTable(level, rows) : `<div class="empty">No ${title.toLowerCase()} match the current filters.</div>`}</div>`;
+    }
+
+    function tableToolbar(level) {
+      return `<div class="table-toolbar">
+        <div class="filters">
+          <select class="select" data-filter="status"><option value="">All statuses</option>${options(STATUSES, state.filters.status)}</select>
+          <select class="select" data-filter="priority"><option value="">All priorities</option>${options(PRIORITIES, state.filters.priority)}</select>
+          ${level === "task" ? `<select class="select" data-filter="project"><option value="">All projects</option>${state.data.projects.map(p => `<option value="${p.id}" ${state.filters.project === p.id ? "selected" : ""}>${escapeHtml(p.title)}</option>`).join("")}</select>` : ""}
+          ${level === "project" ? `<select class="select" data-filter="goal"><option value="">All goals</option>${state.data.goals.map(g => `<option value="${g.id}" ${state.filters.goal === g.id ? "selected" : ""}>${escapeHtml(g.title)}</option>`).join("")}</select>` : ""}
+        </div>
+        <div class="actions">
+          <button class="btn" id="bulkComplete"><i data-lucide="check"></i>Complete</button>
+          <button class="btn danger" id="bulkArchive"><i data-lucide="archive"></i>Archive</button>
+        </div>
+      </div>`;
+    }
+
+    function itemTable(level, rows) {
+      return `<table>
+        <thead><tr>
+          <th style="width:42px"><input type="checkbox" id="selectAll"></th><th>Title</th><th>Priority</th><th>Status</th><th>Deadline</th><th>Progress</th><th>Time</th><th>Actions</th>
+        </tr></thead>
+        <tbody>${rows.map(item => row(level, item)).join("")}</tbody>
+      </table>`;
+    }
+    function row(level, item) {
+      const h = health(item);
+      const time = level === "task" ? `${Math.round((item.actual_minutes || 0) / 60 * 10) / 10}h / ${Math.round((item.estimated_minutes || 0) / 60 * 10) / 10}h` : `${item.actual_hours || 0}h / ${item.estimated_hours || 0}h`;
+      return `<tr>
+        <td><input type="checkbox" data-select-row="${level}:${item.id}" ${state.selectedRows.has(`${level}:${item.id}`) ? "checked" : ""}></td>
+        <td><div class="title-cell"><span class="dot" style="background:${levelColor(level, item)}"></span><div><button data-open="${level}:${item.id}">${escapeHtml(item.title)}</button><div class="subline">${escapeHtml(parentLine(level, item))}</div></div></div></td>
+        <td>${priorityBadge(item.priority)}</td>
+        <td>${statusSelect(level, item)}</td>
+        <td><span class="badge" style="color:${h.color};border-color:${h.border}">${h.text}</span></td>
+        <td><div class="progress"><span style="width:${progressOf(level, item)}%"></span></div><div class="subline">${progressOf(level, item)}%</div></td>
+        <td>${time}</td>
+        <td><div class="actions"><button class="btn icon" data-duplicate="${level}:${item.id}" title="Duplicate"><i data-lucide="copy"></i></button><button class="btn icon danger" data-archive="${level}:${item.id}" title="Archive"><i data-lucide="archive"></i></button></div></td>
+      </tr>`;
+    }
+
+    function renderKanban() {
+      return `${pageHead("Kanban", "Drag work across execution states.", `<button class="btn primary" id="addFromPage"><i data-lucide="plus"></i>New Task</button>`)}
+        <div class="table-toolbar"><div class="filters"><select class="select" data-filter="project"><option value="">All projects</option>${state.data.projects.map(p => `<option value="${p.id}" ${state.filters.project === p.id ? "selected" : ""}>${escapeHtml(p.title)}</option>`).join("")}</select><select class="select" data-filter="priority"><option value="">All priorities</option>${options(PRIORITIES, state.filters.priority)}</select></div></div>
+        <section class="kanban">${BOARD_STATUSES.map(([status, label]) => kanbanColumn(status, label)).join("")}</section>`;
+    }
+    function kanbanColumn(status, label) {
+      const cards = filteredItems("task").filter(t => t.status === status || t.kanban_column === status).sort((a,b) => (a.sort_order || 0) - (b.sort_order || 0));
+      return `<div class="kanban-col"><div class="kanban-head"><strong>${label}</strong><span class="badge">${cards.length}</span></div><div class="kanban-list" data-kanban="${status}">${cards.map(task => kanbanCard(task)).join("")}</div></div>`;
+    }
+    function kanbanCard(task) {
+      const h = health(task);
+      return `<article class="kanban-card" data-task-id="${task.id}">
+        <div style="display:flex;justify-content:space-between;gap:8px"><strong>${escapeHtml(task.title)}</strong>${priorityBadge(task.priority)}</div>
+        <div class="subline">${escapeHtml(parentLine("task", task))}</div>
+        <div style="display:flex;gap:6px;align-items:center;margin-top:9px">${healthBadge(h)}<span class="badge">${progressOf("task", task)}%</span></div>
+      </article>`;
+    }
+
+    function renderCalendar() {
+      const d = state.calendarDate;
+      const first = new Date(d.getFullYear(), d.getMonth(), 1);
+      const start = new Date(first);
+      start.setDate(first.getDate() - first.getDay());
+      const days = Array.from({ length: 42 }, (_, i) => { const x = new Date(start); x.setDate(start.getDate() + i); return x; });
+      return `${pageHead(d.toLocaleDateString(undefined, { month: "long", year: "numeric" }), "Deadlines across goals, projects, tasks, and subtasks.", `<button class="btn" id="prevMonth"><i data-lucide="chevron-left"></i></button><button class="btn" id="nextMonth"><i data-lucide="chevron-right"></i></button>`)}
+        <div class="calendar-scroll"><section class="calendar">
+          ${["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(x => `<div class="day" style="min-height:auto;color:var(--muted);font-weight:650">${x}</div>`).join("")}
+          ${days.map(day => calendarDay(day, d.getMonth())).join("")}
+        </section></div>`;
+    }
+    function calendarDay(day, month) {
+      const iso = day.toISOString().slice(0,10);
+      const items = deadlines().filter(x => x.item.due_date === iso);
+      return `<div class="day ${day.getMonth() !== month ? "muted" : ""}"><div class="day-num">${day.getDate()}</div>${items.map(x => `<button class="cal-item" data-open="${x.level}:${x.item.id}" style="border-left-color:${levelColor(x.level, x.item)}">${escapeHtml(x.item.title)}</button>`).join("")}</div>`;
+    }
+
+    function renderFiles() {
+      return `${pageHead("Files", "Attachments stored privately in Supabase Storage.", `<button class="btn primary" id="attachFromPage"><i data-lucide="upload"></i>Upload</button>`)}
+        <div class="table-wrap"><table><thead><tr><th>Name</th><th>Type</th><th>Size</th><th>Attached To</th><th>Created</th><th>Actions</th></tr></thead>
+        <tbody>${state.data.attachments.map(fileRow).join("") || `<tr><td colspan="6"><div class="empty">No files uploaded yet.</div></td></tr>`}</tbody></table></div>`;
+    }
+    function fileRow(f) {
+      const parent = findByLevel(f.item_level, f.item_id);
+      return `<tr><td>${escapeHtml(f.file_name)}</td><td>${escapeHtml(f.mime_type)}</td><td>${formatBytes(f.file_size || 0)}</td><td>${parent ? escapeHtml(parent.title) : "Unknown"}</td><td>${new Date(f.created_at).toLocaleDateString()}</td><td><button class="btn" data-download="${f.id}"><i data-lucide="download"></i>Open</button></td></tr>`;
+    }
+
+    function renderReports() {
+      const m = metrics();
+      return `${pageHead("Reports", "Time allocation, workload distribution, and completion patterns.", "")}
+        <section class="grid kpi">${kpi("Daily Productivity", m.completedToday, "Items completed today", "calendar-check")}${kpi("Weekly Productivity", m.completedWeek, "Items completed this week", "calendar-range")}${kpi("Monthly Productivity", m.completedMonth, "Items completed this month", "calendar")}${kpi("Average Progress", `${m.avgProgress}%`, "Across active tasks", "gauge")}</section>
+        <section class="dashboard-grid">
+          <div class="card chart-card"><h2 class="section-title">Completion Trend</h2><canvas id="trendChart"></canvas></div>
+          <div class="card chart-card"><h2 class="section-title">Status Distribution</h2><canvas id="statusChart"></canvas></div>
+          <div class="card chart-card"><h2 class="section-title">Workload Distribution</h2><canvas id="workloadChart"></canvas></div>
+          <div class="card chart-card"><h2 class="section-title">Time Allocation</h2><canvas id="timeChart"></canvas></div>
+        </section>`;
+    }
+
+    function renderArchive() {
+      const rows = allItems().filter(x => x.item.archived_at || x.item.status === "archived");
+      return `${pageHead("Archive", "Soft-deleted work can be restored or permanently removed.", "")}
+      <div class="list">${rows.map(x => `<div class="list-row"><div><strong>${escapeHtml(x.item.title)}</strong><div class="subline">${label(x.level)} · ${fmtDate((x.item.archived_at || "").slice(0,10))}</div></div><div class="actions"><button class="btn" data-restore="${x.level}:${x.item.id}"><i data-lucide="rotate-ccw"></i>Restore</button><button class="btn danger" data-hard-delete="${x.level}:${x.item.id}"><i data-lucide="trash-2"></i>Delete</button></div></div>`).join("") || `<div class="empty">Archive is empty.</div>`}</div>`;
+    }
+
+    function renderSettings() {
+      return `${pageHead("Settings", "Personal preferences, data export, and deployment status.", "")}
+        <section class="grid" style="grid-template-columns:1fr 1fr">
+          <div class="card"><h2 class="section-title">Workspace</h2>
+            <div class="form-row"><label>Theme</label><select class="select" id="themeSelect">${[["dark","Dark"],["light","Light"],["system","System"]].map(([v,l]) => `<option value="${v}" ${state.theme === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+            <div class="form-row"><label>Supabase</label><div class="notice">${configured ? "Configured and ready." : "Demo mode. Replace SUPABASE_URL and SUPABASE_ANON_KEY in index.html before deployment."}</div></div>
+          </div>
+          <div class="card"><h2 class="section-title">Data</h2><div class="actions"><button class="btn" id="exportData2"><i data-lucide="download"></i>Export JSON</button><label class="btn"><i data-lucide="upload"></i>Import JSON<input id="importData" type="file" accept="application/json" hidden></label></div></div>
+          <div class="card"><h2 class="section-title">Keyboard</h2><div class="list">${shortcutRows()}</div></div>
+          <div class="card"><h2 class="section-title">Maintenance</h2><div class="list"><div class="list-row"><span>Active tasks</span><strong>${active("tasks").length}</strong></div><div class="list-row"><span>Attachments</span><strong>${state.data.attachments.length}</strong></div><div class="list-row"><span>Storage bucket</span><strong>${APEX_CONFIG.STORAGE_BUCKET}</strong></div></div></div>
+        </section>`;
+    }
+
+    function bindContent() {
+      $("#addFromPage")?.addEventListener("click", () => openQuickModal(defaultLevelForView()));
+      $("#attachFromPage")?.addEventListener("click", () => toast("Open an item detail panel to attach files."));
+      $$("[data-filter]").forEach(el => el.addEventListener("change", () => { state.filters[el.dataset.filter] = el.value; renderView(); }));
+      $$("[data-open]").forEach(el => el.addEventListener("click", () => openItem(...el.dataset.open.split(":"))));
+      $$("[data-select-row]").forEach(el => el.addEventListener("change", () => { el.checked ? state.selectedRows.add(el.dataset.selectRow) : state.selectedRows.delete(el.dataset.selectRow); }));
+      $("#selectAll")?.addEventListener("change", e => $$("[data-select-row]").forEach(box => { box.checked = e.target.checked; e.target.checked ? state.selectedRows.add(box.dataset.selectRow) : state.selectedRows.delete(box.dataset.selectRow); }));
+      $("#bulkComplete")?.addEventListener("click", () => bulkUpdate({ status: "completed", completed_at: nowISO() }));
+      $("#bulkArchive")?.addEventListener("click", () => bulkArchive());
+      $$("[data-archive]").forEach(el => el.addEventListener("click", () => archiveItem(...el.dataset.archive.split(":"))));
+      $$("[data-duplicate]").forEach(el => el.addEventListener("click", () => duplicateItem(...el.dataset.duplicate.split(":"))));
+      $$("[data-restore]").forEach(el => el.addEventListener("click", () => restoreItem(...el.dataset.restore.split(":"))));
+      $$("[data-hard-delete]").forEach(el => el.addEventListener("click", () => hardDeleteItem(...el.dataset.hardDelete.split(":"))));
+      $$("[data-status]").forEach(el => el.addEventListener("change", () => updateStatus(...el.dataset.status.split(":"), el.value)));
+      $("#prevMonth")?.addEventListener("click", () => { state.calendarDate.setMonth(state.calendarDate.getMonth() - 1); renderView(); });
+      $("#nextMonth")?.addEventListener("click", () => { state.calendarDate.setMonth(state.calendarDate.getMonth() + 1); renderView(); });
+      $("#themeSelect")?.addEventListener("change", e => setTheme(e.target.value));
+      $("#exportData2")?.addEventListener("click", exportData);
+      $("#importData")?.addEventListener("change", importData);
+      $$("[data-download]").forEach(el => el.addEventListener("click", () => openAttachment(el.dataset.download)));
+    }
+
+    function renderDetail() {
+      const detail = $("#detail");
+      if (!detail) return;
+      if (!state.selected) { detail.innerHTML = ""; return; }
+      const { level, item } = state.selected;
+      if (!item) { state.selected = null; renderApp(); return; }
+      detail.innerHTML = `
+        <div class="detail-inner">
+          <div class="detail-head">
+            <div><div class="badge">${label(level)}</div><h2>${escapeHtml(item.title)}</h2><p class="subline">${escapeHtml(parentLine(level, item))}</p></div>
+            <button class="btn icon" id="closeDetail"><i data-lucide="x"></i></button>
+          </div>
+          <div class="actions" style="margin-bottom:12px">
+            ${level === "task" ? `<button class="btn primary" id="toggleTimer"><i data-lucide="timer"></i>${state.timer?.task_id === item.id ? "Stop Timer" : "Start Timer"}</button>` : ""}
+            <button class="btn" id="duplicateDetail"><i data-lucide="copy"></i>Duplicate</button>
+            <button class="btn danger" id="archiveDetail"><i data-lucide="archive"></i>Archive</button>
+          </div>
+          <form id="detailForm">
+            <div class="form-row"><label>Title</label><input class="input" name="title" value="${escapeHtml(item.title)}"></div>
+            <div class="form-row"><label>Description</label><textarea class="textarea" name="description">${escapeHtml(item.description || "")}</textarea></div>
+            <div class="form-grid">
+              <div class="form-row"><label>Priority</label><select class="select" name="priority">${options(PRIORITIES, item.priority)}</select></div>
+              <div class="form-row"><label>Status</label><select class="select" name="status">${options(STATUSES, item.status)}</select></div>
+              <div class="form-row"><label>Type</label><select class="select" name="item_type">${options(TYPES, item.item_type)}</select></div>
+              <div class="form-row"><label>Deadline Frequency</label><select class="select" name="deadline_freq">${options(FREQS, item.deadline_freq || "once")}</select></div>
+              <div class="form-row"><label>Due Date</label><input class="input" name="due_date" type="date" value="${item.due_date || ""}"></div>
+              <div class="form-row"><label>Due Time</label><input class="input" name="due_time" type="time" value="${item.due_time || ""}"></div>
+              ${level !== "subtask" ? `<div class="form-row"><label>Progress</label><input class="input" name="progress" type="number" min="0" max="100" value="${progressOf(level, item)}"></div>` : ""}
+              ${level !== "subtask" ? `<div class="form-row"><label>Progress Mode</label><select class="select" name="progress_mode"><option value="auto" ${item.progress_mode === "auto" ? "selected" : ""}>Auto</option><option value="manual" ${item.progress_mode === "manual" ? "selected" : ""}>Manual</option></select></div>` : ""}
+              ${level === "task" ? `<div class="form-row"><label>Estimated Minutes</label><input class="input" name="estimated_minutes" type="number" min="0" value="${item.estimated_minutes || 0}"></div><div class="form-row"><label>Actual Minutes</label><input class="input" name="actual_minutes" type="number" min="0" value="${item.actual_minutes || 0}"></div>` : `<div class="form-row"><label>Estimated Hours</label><input class="input" name="estimated_hours" type="number" min="0" step=".25" value="${item.estimated_hours || 0}"></div><div class="form-row"><label>Actual Hours</label><input class="input" name="actual_hours" type="number" min="0" step=".25" value="${item.actual_hours || 0}"></div>`}
+            </div>
+            <div class="form-row"><label>Notes</label><textarea class="textarea" name="notes">${escapeHtml(item.notes || "")}</textarea></div>
+            <button class="btn primary" type="submit"><i data-lucide="save"></i>Save Changes</button>
+          </form>
+          <hr style="border:0;border-top:1px solid var(--border);margin:16px 0">
+          <h3 class="section-title">Subitems</h3>${detailChildren(level, item)}
+          <h3 class="section-title" style="margin-top:16px">Attachments</h3>${attachmentPanel(level, item)}
+          <h3 class="section-title" style="margin-top:16px">Activity</h3>${activityPanel(level, item)}
+        </div>`;
+      bindDetail();
+      icons();
+    }
+
+    function bindDetail() {
+      const { level, item } = state.selected || {};
+      $("#closeDetail")?.addEventListener("click", () => { state.selected = null; renderApp(); });
+      $("#detailForm")?.addEventListener("submit", async e => {
+        e.preventDefault();
+        const form = Object.fromEntries(new FormData(e.target).entries());
+        ["progress", "estimated_minutes", "actual_minutes", "estimated_hours", "actual_hours"].forEach(k => { if (k in form) form[k] = Number(form[k] || 0); });
+        if (form.status === "completed") form.completed_at = item.completed_at || nowISO();
+        await store.update(level, item.id, form);
+        logActivity(level, item.id, "updated", "details", "", "");
+        recalcRollups();
+        state.selected = { level, item: findByLevel(level, item.id) };
+        renderApp();
+        toast("Saved");
+      });
+      $("#toggleTimer")?.addEventListener("click", () => toggleTimer(item.id));
+      $("#duplicateDetail")?.addEventListener("click", () => duplicateItem(level, item.id));
+      $("#archiveDetail")?.addEventListener("click", () => archiveItem(level, item.id));
+      $("#attachmentInput")?.addEventListener("change", e => uploadAttachments(level, item.id, e.target.files));
+      $("#addChild")?.addEventListener("click", () => openQuickModal(nextLevel(level), item.id));
+      $$("[data-open]").forEach(el => el.addEventListener("click", () => openItem(...el.dataset.open.split(":"))));
+      $$("[data-download]").forEach(el => el.addEventListener("click", () => openAttachment(el.dataset.download)));
+      $$("[data-delete-attachment]").forEach(el => el.addEventListener("click", () => deleteAttachment(el.dataset.deleteAttachment)));
+    }
+
+    function detailChildren(level, item) {
+      const child = nextLevel(level);
+      if (!child) return `<div class="empty">Subtasks are the execution unit.</div>`;
+      const rows = childrenOf(level, item.id);
+      return `<div class="list">${rows.map(x => `<div class="list-row"><div><strong>${escapeHtml(x.title)}</strong><div class="subline">${label(child)} · ${statusLabel(x.status)}</div></div><button class="btn" data-open="${child}:${x.id}">Open</button></div>`).join("") || `<div class="empty">No ${pluralLabel(child).toLowerCase()} yet.</div>`}<button class="btn" id="addChild"><i data-lucide="plus"></i>Add ${label(child)}</button></div>`;
+    }
+    function attachmentPanel(level, item) {
+      const files = state.data.attachments.filter(a => a.item_level === level && a.item_id === item.id);
+      return `<div class="list"><label class="btn"><i data-lucide="paperclip"></i>Attach Files<input id="attachmentInput" type="file" multiple hidden></label>${files.map(f => `<div class="list-row"><div><strong>${escapeHtml(f.file_name)}</strong><div class="subline">${formatBytes(f.file_size || 0)} · ${escapeHtml(f.mime_type)}</div></div><div class="actions"><button class="btn" data-download="${f.id}">Open</button><button class="btn danger" data-delete-attachment="${f.id}">Delete</button></div></div>`).join("") || `<div class="empty">No attachments.</div>`}</div>`;
+    }
+    function activityPanel(level, item) {
+      const logs = state.data.activity_log.filter(a => a.item_level === level && a.item_id === item.id).slice(-10).reverse();
+      return `<div class="list">${logs.map(a => `<div class="list-row"><div><strong>${escapeHtml(a.action)}</strong><div class="subline">${new Date(a.created_at).toLocaleString()}</div></div></div>`).join("") || `<div class="empty">No activity yet.</div>`}</div>`;
+    }
+
+    function openQuickModal(level = "task", parentId = "") {
+      const modal = $("#quickModal");
+      modal.classList.add("open");
+      modal.innerHTML = `<div class="modal">
+        <div class="modal-head"><h2 class="section-title" style="margin:0">Quick Capture</h2><button class="btn icon" id="closeQuick"><i data-lucide="x"></i></button></div>
+        <form id="quickForm">
+          <div class="modal-body grid">
+            <div class="form-row"><label>Level</label><select class="select" name="level" id="quickLevel">${LEVELS.map(l => `<option value="${l}" ${level === l ? "selected" : ""}>${label(l)}</option>`).join("")}</select></div>
+            <div id="parentPickers">${parentPickers(level, parentId)}</div>
+            <div class="form-row"><label>Title</label><input class="input" name="title" autofocus required placeholder="What needs to move forward?"></div>
+            <div class="form-row"><label>Description</label><textarea class="textarea" name="description"></textarea></div>
+            <div class="form-grid">
+              <div class="form-row"><label>Priority</label><select class="select" name="priority">${options(PRIORITIES, "medium")}</select></div>
+              <div class="form-row"><label>Status</label><select class="select" name="status">${options(STATUSES.slice(0,5), "not_started")}</select></div>
+              <div class="form-row"><label>Type</label><select class="select" name="item_type">${options(TYPES, "creation")}</select></div>
+              <div class="form-row"><label>Due Date</label><input class="input" type="date" name="due_date"></div>
+            </div>
+          </div>
+          <div class="modal-foot"><button class="btn" type="button" id="cancelQuick">Cancel</button><button class="btn primary" type="submit"><i data-lucide="plus"></i>Create</button></div>
+        </form>
+      </div>`;
+      icons();
+      $("#closeQuick").addEventListener("click", closeQuick);
+      $("#cancelQuick").addEventListener("click", closeQuick);
+      $("#quickLevel").addEventListener("change", e => $("#parentPickers").innerHTML = parentPickers(e.target.value, ""));
+      $("#quickForm").addEventListener("submit", createQuick);
+    }
+    function parentPickers(level, parentId) {
+      if (level === "goal") return "";
+      if (level === "project") return `<div class="form-row"><label>Goal</label><select class="select" name="goal_id" required>${active("goals").map(g => `<option value="${g.id}" ${parentId === g.id ? "selected" : ""}>${escapeHtml(g.title)}</option>`).join("")}</select></div>`;
+      if (level === "task") return `<div class="form-row"><label>Project</label><select class="select" name="project_id" required>${active("projects").map(p => `<option value="${p.id}" ${parentId === p.id ? "selected" : ""}>${escapeHtml(p.title)}</option>`).join("")}</select></div>`;
+      return `<div class="form-row"><label>Task</label><select class="select" name="task_id" required>${active("tasks").map(t => `<option value="${t.id}" ${parentId === t.id ? "selected" : ""}>${escapeHtml(t.title)}</option>`).join("")}</select></div>`;
+    }
+    function closeQuick() { $("#quickModal").classList.remove("open"); $("#quickModal").innerHTML = ""; }
+    async function createQuick(e) {
+      e.preventDefault();
+      const form = Object.fromEntries(new FormData(e.target).entries());
+      const level = form.level;
+      delete form.level;
+      const row = {
+        ...form, title: form.title.trim(), description: form.description || "", due_date: form.due_date || null,
+        progress: form.status === "completed" ? 100 : 0, progress_mode: "manual", deadline_freq: "once",
+        sort_order: active(TABLES[level]).length + 1, pinned: false, created_at: nowISO(), updated_at: nowISO()
+      };
+      if (level === "goal") { row.color = randomColor(); row.estimated_hours = 0; row.actual_hours = 0; }
+      if (level === "project") { row.color = randomColor(); row.estimated_hours = 0; row.actual_hours = 0; }
+      if (level === "task") { row.estimated_minutes = 0; row.actual_minutes = 0; row.kanban_column = row.status; }
+      const created = await store.insert(level, row);
+      logActivity(level, created.id, "created", "title", "", created.title);
+      recalcRollups();
+      closeQuick();
+      state.selected = { level, item: created };
+      renderApp();
+      toast(`${label(level)} created`);
+    }
+
+    async function openItem(level, id) {
+      state.selected = { level, item: findByLevel(level, id) };
+      renderApp();
+    }
+    async function updateStatus(level, id, status) {
+      const patch = { status, kanban_column: level === "task" ? status : undefined };
+      if (status === "completed") patch.completed_at = nowISO();
+      await store.update(level, id, patch);
+      logActivity(level, id, "status_changed", "status", "", status);
+      recalcRollups();
+      renderApp();
+    }
+    async function archiveItem(level, id) {
+      await store.remove(level, id);
+      logActivity(level, id, "archived", "status", "", "archived");
+      state.selected = null;
+      renderApp();
+      toast("Archived");
+    }
+    async function restoreItem(level, id) {
+      await store.restore(level, id);
+      renderApp();
+      toast("Restored");
+    }
+    async function hardDeleteItem(level, id) {
+      if (!confirm("Permanently delete this item?")) return;
+      await store.hardDelete(level, id);
+      renderApp();
+    }
+    async function duplicateItem(level, id) {
+      const item = findByLevel(level, id);
+      const clone = { ...item, title: `${item.title} Copy`, archived_at: null, completed_at: null, created_at: nowISO(), updated_at: nowISO() };
+      delete clone.id;
+      const created = await store.insert(level, clone);
+      state.selected = { level, item: created };
+      renderApp();
+      toast("Duplicated");
+    }
+    async function bulkUpdate(patch) {
+      for (const key of state.selectedRows) await store.update(...key.split(":"), patch);
+      state.selectedRows.clear();
+      recalcRollups();
+      renderApp();
+    }
+    async function bulkArchive() {
+      for (const key of state.selectedRows) await store.remove(...key.split(":"));
+      state.selectedRows.clear();
+      renderApp();
+    }
+
+    function setupKanban() {
+      $$("[data-kanban]").forEach(list => {
+        Sortable.create(list, {
+          group: "kanban",
+          animation: 160,
+          forceFallback: true,
+          onEnd: async evt => {
+            const status = evt.to.dataset.kanban;
+            const id = evt.item.dataset.taskId;
+            await store.update("task", id, { status, kanban_column: status, sort_order: evt.newIndex + 1, completed_at: status === "completed" ? nowISO() : null });
+            recalcRollups();
+            renderView();
+            toast("Task moved");
+          }
+        });
+      });
+    }
+
+    async function toggleTimer(taskId) {
+      if (state.timer?.task_id === taskId) {
+        const elapsed = Math.floor((Date.now() - state.timer.started_ms) / 1000);
+        const task = findByLevel("task", taskId);
+        await store.update("task", taskId, { actual_minutes: (task.actual_minutes || 0) + Math.round(elapsed / 60) });
+        await store.insert("time_entries", { task_id: taskId, started_at: state.timer.started_at, ended_at: nowISO(), duration_s: elapsed, notes: "", is_running: false, created_at: state.timer.started_at });
+        state.timer = null;
+        localStorage.removeItem("apex-active-timer");
+        toast("Timer stopped");
+      } else {
+        state.timer = { task_id: taskId, started_at: nowISO(), started_ms: Date.now() };
+        localStorage.setItem("apex-active-timer", JSON.stringify(state.timer));
+        toast("Timer started");
+      }
+      renderApp();
+    }
+    function renderTimerPill() {
+      if (!state.timer) return;
+      const tick = () => {
+        const el = $("#timerText");
+        if (el && state.timer) el.textContent = formatClock(Math.floor((Date.now() - state.timer.started_ms) / 1000));
+      };
+      tick();
+      clearInterval(window.apexTimerInterval);
+      window.apexTimerInterval = setInterval(tick, 1000);
+    }
+
+    async function uploadAttachments(level, id, files) {
+      if (!files?.length) return;
+      if (!configured) { toast("Supabase Storage is required for uploads."); return; }
+      for (const file of Array.from(files)) {
+        if (file.type.startsWith("video/")) { toast("Video uploads are not enabled."); continue; }
+        const path = `${state.user.id}/${level}/${id}/${Date.now()}-${file.name.replace(/[^a-z0-9_.-]/gi, "_")}`;
+        const up = await sb.storage.from(APEX_CONFIG.STORAGE_BUCKET).upload(path, file, { upsert: false });
+        if (up.error) { toast(up.error.message); continue; }
+        await store.insert("attachments", { item_id: id, item_level: level, storage_path: path, file_name: file.name, mime_type: file.type || "application/octet-stream", file_size: file.size });
+      }
+      state.selected = { level, item: findByLevel(level, id) };
+      renderApp();
+    }
+    async function openAttachment(id) {
+      const file = state.data.attachments.find(f => f.id === id);
+      if (!file) return;
+      if (!configured) return toast("File preview requires Supabase Storage.");
+      const { data, error } = await sb.storage.from(APEX_CONFIG.STORAGE_BUCKET).createSignedUrl(file.storage_path, 3600);
+      if (error) return toast(error.message);
+      window.open(data.signedUrl, "_blank", "noopener");
+    }
+    async function deleteAttachment(id) {
+      const file = state.data.attachments.find(f => f.id === id);
+      if (!file) return;
+      if (configured) await sb.storage.from(APEX_CONFIG.STORAGE_BUCKET).remove([file.storage_path]);
+      await store.hardDelete("attachments", id);
+      renderApp();
+    }
+
+    function renderCharts() {
+      Object.values(state.charts).forEach(c => c?.destroy?.());
+      state.charts = {};
+      const trend = $("#trendChart");
+      if (trend) state.charts.trend = new Chart(trend, { type: "line", data: trendData(), options: chartOptions() });
+      const priority = $("#priorityChart");
+      if (priority) state.charts.priority = new Chart(priority, { type: "doughnut", data: distributionData("priority", PRIORITIES), options: chartOptions(false) });
+      const status = $("#statusChart");
+      if (status) state.charts.status = new Chart(status, { type: "bar", data: distributionData("status", BOARD_STATUSES), options: chartOptions() });
+      const workload = $("#workloadChart");
+      if (workload) state.charts.workload = new Chart(workload, { type: "bar", data: workloadData(), options: chartOptions() });
+      const time = $("#timeChart");
+      if (time) state.charts.time = new Chart(time, { type: "doughnut", data: timeData(), options: chartOptions(false) });
+    }
+    function chartOptions(scales = true) {
+      return { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: css("--muted"), boxWidth: 10 } } }, scales: scales ? { x: { ticks: { color: css("--muted") }, grid: { color: css("--border-soft") } }, y: { ticks: { color: css("--muted") }, grid: { color: css("--border-soft") } } } : undefined };
+    }
+    function trendData() {
+      const labels = Array.from({ length: 14 }, (_, i) => addDays(i - 13));
+      const data = labels.map(day => allItems().filter(x => x.item.completed_at?.slice(0,10) === day).length);
+      return { labels: labels.map(x => x.slice(5)), datasets: [{ label: "Completed", data, borderColor: "#1d9e75", backgroundColor: "rgba(29,158,117,.18)", tension: .35, fill: true }] };
+    }
+    function distributionData(field, defs) {
+      const rows = active("tasks");
+      return { labels: defs.map(x => x[1]), datasets: [{ data: defs.map(x => rows.filter(t => t[field] === x[0]).length), backgroundColor: ["#e24b4a", "#ef9f27", "#1d9e75", "#378add", "#888780", "#6f6d68"] }] };
+    }
+    function workloadData() {
+      const labels = active("projects").map(p => p.title).slice(0, 8);
+      return { labels, datasets: [{ label: "Open tasks", data: labels.map((_, i) => active("tasks").filter(t => t.project_id === active("projects")[i].id).length), backgroundColor: "#378add" }] };
+    }
+    function timeData() {
+      const projects = active("projects").slice(0, 6);
+      return { labels: projects.map(p => p.title), datasets: [{ data: projects.map(p => active("tasks").filter(t => t.project_id === p.id).reduce((s,t) => s + (t.actual_minutes || 0), 0)), backgroundColor: ["#d5bf75", "#1d9e75", "#378add", "#ef9f27", "#e24b4a", "#888780"] }] };
+    }
+
+    function active(table) { return (state.data[table] || []).filter(x => !x.archived_at && x.status !== "archived"); }
+    function allItems() { return LEVELS.flatMap(level => (state.data[TABLES[level]] || []).map(item => ({ level, item }))); }
+    function filteredItems(level) {
+      const q = state.filters.q.toLowerCase();
+      return active(TABLES[level]).filter(item => {
+        if (q && !`${item.title} ${item.description || ""}`.toLowerCase().includes(q)) return false;
+        if (state.filters.status && item.status !== state.filters.status) return false;
+        if (state.filters.priority && item.priority !== state.filters.priority) return false;
+        if (level === "task" && state.filters.project && item.project_id !== state.filters.project) return false;
+        if (level === "project" && state.filters.goal && item.goal_id !== state.filters.goal) return false;
+        return true;
+      });
+    }
+    function findByLevel(level, id) { return state.data[TABLES[level]]?.find(x => x.id === id); }
+    function childrenOf(level, id) {
+      if (level === "goal") return active("projects").filter(p => p.goal_id === id);
+      if (level === "project") return active("tasks").filter(t => t.project_id === id);
+      if (level === "task") return active("subtasks").filter(s => s.task_id === id);
+      return [];
+    }
+    function nextLevel(level) { return ({ goal: "project", project: "task", task: "subtask" })[level]; }
+    function defaultLevelForView() { return ({ goals: "goal", projects: "project", tasks: "task", subtasks: "subtask", kanban: "task", myday: "task" })[state.view] || "task"; }
+    function label(level) { return ({ goal: "Goal", project: "Project", task: "Task", subtask: "Subtask" })[level]; }
+    function pluralLabel(level) { return ({ goal: "Goals", project: "Projects", task: "Tasks", subtask: "Subtasks" })[level]; }
+    function options(list, selected) { return list.map(([v, l]) => `<option value="${v}" ${selected === v ? "selected" : ""}>${l}</option>`).join(""); }
+    function statusLabel(value) { return STATUSES.find(x => x[0] === value)?.[1] || value; }
+    function priorityBadge(priority) { return `<span class="badge ${priority}">${PRIORITIES.find(x => x[0] === priority)?.[1] || priority}</span>`; }
+    function statusSelect(level, item) { return `<select class="select" data-status="${level}:${item.id}">${options(STATUSES, item.status)}</select>`; }
+    function levelColor(level, item) {
+      if (item.color) return item.color;
+      if (level === "task") return findByLevel("project", item.project_id)?.color || "#378add";
+      if (level === "subtask") return levelColor("task", findByLevel("task", item.task_id) || {});
+      return "#888780";
+    }
+    function parentLine(level, item) {
+      if (level === "goal") return `${childrenOf("goal", item.id).length} projects`;
+      if (level === "project") return findByLevel("goal", item.goal_id)?.title || "No goal";
+      if (level === "task") return findByLevel("project", item.project_id)?.title || "No project";
+      if (level === "subtask") return findByLevel("task", item.task_id)?.title || "No task";
+      return "";
+    }
+    function progressOf(level, item) {
+      if (level === "subtask") return item.status === "completed" ? 100 : 0;
+      if (item.progress_mode === "manual") return clamp(item.progress, 0, 100);
+      const children = childrenOf(level, item.id);
+      if (!children.length) return clamp(item.progress, 0, 100);
+      return Math.round(children.reduce((s, c) => s + progressOf(nextLevel(level), c), 0) / children.length);
+    }
+    function recalcRollups() {
+      ["tasks", "projects", "goals"].forEach(table => state.data[table].forEach(item => {
+        if (item.progress_mode === "auto") item.progress = progressOf(table.slice(0, -1), item);
+      }));
+      store.persistLocal();
+    }
+    function deadlines() { return allItems().filter(x => x.item.due_date && !x.item.archived_at && x.item.status !== "completed" && x.item.status !== "archived"); }
+    function dueToday() { return active("tasks").filter(t => t.due_date === todayISO() && t.status !== "completed"); }
+    function deadlineRadar() { return active("tasks").filter(t => t.due_date && t.status !== "completed").sort((a,b) => new Date(a.due_date) - new Date(b.due_date)); }
+    function health(item) {
+      if (!item.due_date) return { level: "none", text: "No deadline", color: "var(--faint)", border: "var(--border)" };
+      const start = new Date(todayISO() + "T00:00:00");
+      const due = new Date(item.due_date + "T00:00:00");
+      const diff = Math.floor((due - start) / 86400000);
+      if (diff < 0) return { level: "overdue", text: `Overdue by ${humanDays(Math.abs(diff))}`, color: "var(--critical)", border: "rgba(226,75,74,.4)" };
+      if (diff === 0) return { level: "today", text: "Due today", color: "var(--high)", border: "rgba(239,159,39,.45)" };
+      if (diff <= 3) return { level: "risk", text: `${diff}d left`, color: "var(--risk)", border: "rgba(216,90,48,.45)" };
+      if (diff <= 7) return { level: "soon", text: `${diff}d left`, color: "var(--high)", border: "rgba(239,159,39,.35)" };
+      return { level: "healthy", text: `${diff}d left`, color: "var(--ok)", border: "rgba(99,153,34,.35)" };
+    }
+    function healthBadge(h) { return `<span class="badge" style="color:${h.color};border-color:${h.border}">${h.text}</span>`; }
+    function humanDays(days) { if (days >= 120) return `${Math.round(days / 30)} months`; if (days >= 35) return `${Math.round(days / 7)} weeks`; return `${days} day${days === 1 ? "" : "s"}`; }
+    function recentCompleted() { return active("tasks").filter(t => t.completed_at).sort((a,b) => new Date(b.completed_at) - new Date(a.completed_at)); }
+    function compactList(items) {
+      return `<div class="list">${items.map(item => {
+        const level = item.project_id ? "task" : item.goal_id ? "project" : item.task_id ? "subtask" : "goal";
+        return `<div class="list-row"><div><strong>${escapeHtml(item.title)}</strong><div class="subline">${parentLine(level, item)} · ${health(item).text}</div></div><button class="btn" data-open="${level}:${item.id}">Open</button></div>`;
+      }).join("") || `<div class="empty">Nothing here yet.</div>`}</div>`;
+    }
+    function heatmap() {
+      const days = Array.from({ length: 60 }, (_, i) => addDays(i - 59));
+      return `<div class="heatmap">${days.map(day => {
+        const n = allItems().filter(x => x.item.completed_at?.slice(0,10) === day).length;
+        return `<div class="heat l${Math.min(4, n)}" title="${day}: ${n} completed"></div>`;
+      }).join("")}</div>`;
+    }
+    function metrics() {
+      const tasks = active("tasks");
+      const completed = tasks.filter(t => t.status === "completed").length;
+      const total = tasks.length || 1;
+      const startWeek = new Date(); startWeek.setDate(startWeek.getDate() - 7);
+      const startMonth = new Date(); startMonth.setDate(startMonth.getDate() - 30);
+      return {
+        goals: active("goals").length,
+        openTasks: tasks.filter(t => t.status !== "completed").length,
+        overdue: tasks.filter(t => health(t).level === "overdue").length,
+        completionRate: Math.round(completed / total * 100),
+        todaySeconds: timeSince(addDays(0)),
+        weekSeconds: state.data.time_entries.filter(e => new Date(e.started_at) >= startWeek).reduce((s,e) => s + (e.duration_s || 0), 0),
+        critical: tasks.filter(t => t.priority === "critical" && t.status !== "completed").length,
+        deadlineSuccess: 92,
+        backlog: tasks.filter(t => t.priority === "backlog").length,
+        completedToday: allItems().filter(x => x.item.completed_at?.slice(0,10) === todayISO()).length,
+        completedWeek: allItems().filter(x => x.item.completed_at && new Date(x.item.completed_at) >= startWeek).length,
+        completedMonth: allItems().filter(x => x.item.completed_at && new Date(x.item.completed_at) >= startMonth).length,
+        avgProgress: Math.round(tasks.reduce((s,t) => s + progressOf("task", t), 0) / total)
+      };
+    }
+    function timeSince(day) { return state.data.time_entries.filter(e => e.started_at?.slice(0,10) === day).reduce((s,e) => s + (e.duration_s || 0), 0); }
+    function countOpenTasks() { return active("tasks").filter(t => t.status !== "completed").length; }
+    function archivedCount() { return allItems().filter(x => x.item.archived_at || x.item.status === "archived").length; }
+    function activeTaskTitle() { return findByLevel("task", state.timer?.task_id)?.title || "Task timer"; }
+    function timerCard() { return `<div class="list-row"><div><strong>${escapeHtml(activeTaskTitle())}</strong><div class="subline" id="timerCardTime">${$("#timerText")?.textContent || ""}</div></div><button class="btn primary" onclick="toggleTimer('${state.timer.task_id}')">Stop</button></div>`; }
+
+    function openShortcuts() {
+      const modal = $("#shortcutModal");
+      modal.classList.add("open");
+      modal.innerHTML = `<div class="modal"><div class="modal-head"><h2 class="section-title" style="margin:0">Keyboard</h2><button class="btn icon" id="closeShortcuts"><i data-lucide="x"></i></button></div><div class="modal-body"><div class="list">${shortcutRows()}</div></div></div>`;
+      $("#closeShortcuts").addEventListener("click", () => { modal.classList.remove("open"); modal.innerHTML = ""; });
+      icons();
+    }
+    function shortcutRows() {
+      return [["Ctrl/⌘ + K", "Quick capture"], ["/", "Search"], ["?", "Keyboard"], ["Esc", "Close panel or modal"]].map(([k,v]) => `<div class="list-row"><strong>${k}</strong><span>${v}</span></div>`).join("");
+    }
+    function toggleTheme() { setTheme(state.theme === "dark" ? "light" : "dark"); }
+    function setTheme(theme) {
+      state.theme = theme;
+      localStorage.setItem("apex-theme", theme);
+      document.documentElement.dataset.theme = theme === "system" ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark") : theme;
+      renderApp();
+    }
+    function currentCrumb() { return state.selected ? `${label(state.selected.level)} / ${state.selected.item?.title || ""}` : `Workspace / ${state.view}`; }
+    function logActivity(level, id, action, field, oldValue, newValue) {
+      store.insert("activity_log", { item_id: id, item_level: level, action, field_name: field, old_value: oldValue, new_value: newValue, created_at: nowISO() }).catch(() => {});
+    }
+    function exportData() {
+      const blob = new Blob([JSON.stringify({ exported_at: nowISO(), data: state.data }, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `apex-export-${todayISO()}.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+    async function importData(e) {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const parsed = JSON.parse(await file.text());
+      if (!parsed.data) return toast("Invalid export file.");
+      state.data = parsed.data;
+      store.persistLocal();
+      renderApp();
+      toast("Imported");
+    }
+    function formatDuration(seconds) {
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      return h ? `${h}h ${m}m` : `${m}m`;
+    }
+    function formatClock(seconds) {
+      const h = String(Math.floor(seconds / 3600)).padStart(2, "0");
+      const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, "0");
+      const s = String(seconds % 60).padStart(2, "0");
+      return `${h}:${m}:${s}`;
+    }
+    function formatBytes(bytes) {
+      if (!bytes) return "0 B";
+      const units = ["B","KB","MB","GB"];
+      const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+      return `${(bytes / Math.pow(1024, i)).toFixed(i ? 1 : 0)} ${units[i]}`;
+    }
+    function uniqueBy(items, key) { return Array.from(new Map(items.map(x => [x[key], x])).values()); }
+    function randomColor() { return ["#d5bf75", "#1d9e75", "#378add", "#ef9f27", "#e24b4a", "#888780"][Math.floor(Math.random() * 6)]; }
+    function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+    function toast(message) {
+      const el = document.createElement("div");
+      el.className = "toast";
+      el.textContent = message;
+      $("#toastStack").appendChild(el);
+      setTimeout(() => el.remove(), 4200);
+    }
+    function icons() { lucide?.createIcons?.({ attrs: { "stroke-width": 1.75 } }); }
+
+    document.addEventListener("keydown", e => {
+      const cmd = e.ctrlKey || e.metaKey;
+      if (cmd && e.key.toLowerCase() === "k") { e.preventDefault(); openQuickModal(); }
+      if (e.key === "/" && document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "TEXTAREA") { e.preventDefault(); $("#globalSearch")?.focus(); }
+      if (e.key === "?") openShortcuts();
+      if (e.key === "Escape") {
+        $("#quickModal").classList.remove("open"); $("#shortcutModal").classList.remove("open");
+        if (state.selected) { state.selected = null; renderApp(); }
+      }
+    });
+
+    init().catch(error => {
+      console.error(error);
+      $("#app").innerHTML = `<main class="auth"><section class="auth-card"><h1>APEX could not start</h1><div class="notice">${escapeHtml(error.message || error)}</div></section></main>`;
+    });
+  </script>
+</body>
+</html>
