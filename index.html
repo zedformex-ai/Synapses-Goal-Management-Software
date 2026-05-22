@@ -299,13 +299,13 @@
     "use strict";
 
     const APEX_CONFIG = {
-      SUPABASE_URL: "https://htqoyylnfeteokstyhwm.supabase.co/rest/v1/",
+      SUPABASE_URL: "https://htqoyylnfeteokstyhwm.supabase.co",
       SUPABASE_ANON_KEY: "sb_publishable_qTFerlyyMw1taflUuVSYBg_a2B9CtGq",
       STORAGE_BUCKET: "apex-attachments",
       APP_NAME: "APEX"
     };
 
-    const SUPABASE_URL = APEX_CONFIG.SUPABASE_URL.trim().replace(/\/+$/, "");
+    const SUPABASE_URL = APEX_CONFIG.SUPABASE_URL.trim().replace(/\/rest\/v1\/?$/, "").replace(/\/+$/, "");
     const SUPABASE_KEY = APEX_CONFIG.SUPABASE_ANON_KEY.trim();
     const configured = /^https:\/\/.+\.supabase\.co$/.test(SUPABASE_URL) && !SUPABASE_KEY.startsWith("PASTE_");
     const sb = configured ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
