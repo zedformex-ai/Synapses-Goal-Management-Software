@@ -11,6 +11,8 @@
       document.documentElement.dataset.theme = theme === "system"
         ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
         : theme;
+      var collapsed = localStorage.getItem("apex-sidebar-collapsed") === "true";
+      document.documentElement.dataset.sidebarCollapsed = collapsed ? "true" : "false";
     })();
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -30,6 +32,11 @@
       --backlog: #888780;
       --ok: #639922;
       --risk: #d85a30;
+      --sidebar-width: 260px;
+      --sidebar-collapsed-width: 56px;
+      --transition-fast: 150ms cubic-bezier(0.4,0,0.2,1);
+      --transition-base: 220ms cubic-bezier(0.4,0,0.2,1);
+      --transition-slow: 350ms cubic-bezier(0.4,0,0.2,1);
     }
     [data-theme="dark"] {
       --bg: #0f0f11;
@@ -75,7 +82,17 @@
     }
     button, input, select, textarea { font: inherit; }
     button { cursor: pointer; }
-    .app { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: 100vh; }
+
+    /* ── Sidebar collapse ── */
+    .app {
+      display: grid;
+      grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+      min-height: 100vh;
+      transition: grid-template-columns var(--transition-base);
+    }
+    .app.sidebar-collapsed {
+      grid-template-columns: var(--sidebar-collapsed-width) minmax(0, 1fr);
+    }
     .sidebar {
       border-right: 1px solid var(--border);
       background: var(--surface);
@@ -83,31 +100,85 @@
       display: flex;
       flex-direction: column;
       min-width: 0;
+      overflow: hidden;
+      transition: width var(--transition-base), padding var(--transition-base);
+      width: var(--sidebar-width);
+      position: relative;
     }
-    .brand { display: flex; align-items: center; gap: 10px; padding: 8px 8px 14px; }
+    .app.sidebar-collapsed .sidebar {
+      width: var(--sidebar-collapsed-width);
+      padding: 14px 8px;
+    }
+    .sidebar-toggle {
+      position: absolute;
+      top: 14px;
+      right: 10px;
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 10;
+      transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-base);
+      flex-shrink: 0;
+    }
+    .sidebar-toggle:hover { background: var(--surface-3); color: var(--text); }
+    .app.sidebar-collapsed .sidebar-toggle { transform: rotate(180deg); right: 6px; }
+
+    /* hide labels when collapsed */
+    .app.sidebar-collapsed .brand h1,
+    .app.sidebar-collapsed .brand span,
+    .app.sidebar-collapsed .nav button span:not(.count),
+    .app.sidebar-collapsed .nav .count,
+    .app.sidebar-collapsed .sidebar-section,
+    .app.sidebar-collapsed .quick {
+      opacity: 0;
+      pointer-events: none;
+      width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+    .app.sidebar-collapsed .brand { padding: 8px 0 14px; justify-content: center; }
+    .app.sidebar-collapsed .nav button { justify-content: center; padding: 8px 0; }
+    .app.sidebar-collapsed .nav button i,
+    .app.sidebar-collapsed .nav button svg { margin: 0; }
+
+    .brand { display: flex; align-items: center; gap: 10px; padding: 8px 8px 14px; transition: padding var(--transition-base); }
     .mark {
       width: 32px; height: 32px; border: 1px solid var(--border);
       display: grid; place-items: center; border-radius: var(--radius);
       background: var(--surface-2); color: var(--accent);
-      font-weight: 800; letter-spacing: 0;
+      font-weight: 800; letter-spacing: 0; flex-shrink: 0;
     }
-    .brand h1 { font-size: 15px; margin: 0; font-weight: 650; }
-    .brand span { color: var(--muted); font-size: 12px; display: block; margin-top: -2px; }
+    .brand h1 { font-size: 15px; margin: 0; font-weight: 650; transition: opacity var(--transition-base), width var(--transition-base); white-space: nowrap; }
+    .brand span { color: var(--muted); font-size: 12px; display: block; margin-top: -2px; white-space: nowrap; }
     .nav { display: grid; gap: 4px; }
     .nav button, .bottom-nav button {
       border: 0; background: transparent; color: var(--muted);
       display: flex; align-items: center; gap: 10px; width: 100%;
       min-height: 36px; padding: 8px 10px; border-radius: var(--radius);
       text-align: left;
+      transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
     }
-    .nav button:hover, .nav button.active { background: var(--surface-2); color: var(--text); }
+    .nav button:hover { background: var(--surface-2); color: var(--text); transform: translateX(2px); }
+    .nav button.active {
+      background: var(--surface-2); color: var(--text);
+      box-shadow: inset 3px 0 0 var(--accent);
+    }
     .nav .count { margin-left: auto; font-size: 11px; color: var(--faint); }
-    .sidebar-section { margin-top: 16px; min-height: 0; }
+    .sidebar-section { margin-top: 16px; min-height: 0; transition: opacity var(--transition-base); }
     .sidebar-title { color: var(--faint); font-size: 11px; text-transform: uppercase; margin: 0 8px 7px; }
     .tree { overflow: auto; padding-right: 2px; max-height: 34vh; }
     .tree-item {
       display: flex; align-items: center; gap: 8px; min-height: 30px;
       padding: 5px 8px; border-radius: var(--radius); color: var(--muted);
+      transition: background var(--transition-fast), color var(--transition-fast);
+      cursor: pointer;
     }
     .tree-item:hover { background: var(--surface-2); color: var(--text); }
     .dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; }
@@ -117,7 +188,10 @@
       display: grid;
       gap: 8px;
       padding-top: 12px;
+      transition: opacity var(--transition-base);
     }
+
+    /* ── Main area ── */
     .main { display: grid; grid-template-rows: 58px minmax(0,1fr); min-width: 0; min-height: 100vh; }
     .topbar {
       display: flex; align-items: center; gap: 12px; padding: 10px 16px;
@@ -129,22 +203,41 @@
     .searchbox input {
       width: 100%; height: 38px; border-radius: var(--radius); border: 1px solid var(--border);
       background: var(--input); color: var(--text); padding: 0 12px 0 38px; outline: none;
+      transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
     }
-    .searchbox input:focus { border-color: color-mix(in srgb, var(--accent) 60%, var(--border)); }
+    .searchbox input:focus {
+      border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
+    }
     .timer-pill {
       display: none; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 99px;
       background: rgba(29,158,117,.12); color: var(--accent-2); border: 1px solid rgba(29,158,117,.32);
       font-family: var(--font-mono); font-size: 12px;
+      transition: transform var(--transition-fast), background var(--transition-fast);
     }
+    .timer-pill:hover { transform: scale(1.03); }
     .timer-pill.running { display: inline-flex; }
-    .content-wrap { display: grid; grid-template-columns: minmax(0,1fr) 0; min-height: 0; transition: grid-template-columns .22s ease; }
+
+    /* ── Content transitions ── */
+    .content-wrap { display: grid; grid-template-columns: minmax(0,1fr) 0; min-height: 0; transition: grid-template-columns var(--transition-base); }
     .content-wrap.detail-open { grid-template-columns: minmax(0,1fr) 380px; }
     .content { overflow: visible; padding: 20px; min-width: 0; }
+
+    /* Page content fade-in */
+    @keyframes contentFadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .content > * { animation: contentFadeIn var(--transition-base) both; }
+
     .detail {
       overflow: auto; border-left: 1px solid var(--border); background: var(--surface);
-      transform: translateX(100%); transition: transform .22s ease; min-width: 0;
+      transform: translateX(100%); transition: transform var(--transition-base);
+      min-width: 0;
     }
     .content-wrap.detail-open .detail { transform: translateX(0); }
+
+    /* ── Cards & UI elements ── */
     .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
     .page-title { margin: 0; font-size: 22px; font-weight: 650; }
     .page-subtitle { margin: 3px 0 0; color: var(--muted); }
@@ -153,17 +246,26 @@
       border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
       height: 36px; padding: 0 12px; border-radius: var(--radius); display: inline-flex;
       align-items: center; justify-content: center; gap: 8px; white-space: nowrap;
+      transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
     }
-    .btn:hover { background: var(--surface-3); }
-    .btn.primary { background: var(--accent); color: var(--bg); border-color: transparent; font-weight: 650; }
+    .btn:hover { background: var(--surface-3); transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,.12); }
+    .btn:active { transform: translateY(0); box-shadow: none; }
+    .btn.primary {
+      background: var(--accent); color: var(--bg); border-color: transparent; font-weight: 650;
+    }
+    .btn.primary:hover { filter: brightness(1.08); }
     .btn.icon { width: 36px; padding: 0; }
     .btn.danger { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 40%, var(--border)); }
+    .btn.danger:hover { background: color-mix(in srgb, var(--critical) 10%, var(--surface-2)); }
+
     .grid { display: grid; gap: 12px; }
     .grid.kpi { grid-template-columns: repeat(4, minmax(0,1fr)); margin-bottom: 12px; }
     .card {
       border: 1px solid var(--border); border-radius: var(--radius);
       background: var(--surface); padding: 14px; min-width: 0;
+      transition: box-shadow var(--transition-fast), transform var(--transition-fast);
     }
+    .card:hover { box-shadow: 0 4px 20px rgba(0,0,0,.10); }
     .kpi-card { min-height: 112px; display: flex; flex-direction: column; justify-content: space-between; }
     .kpi-label { color: var(--muted); font-size: 12px; display: flex; justify-content: space-between; align-items: center; }
     .kpi-value { font-family: var(--font-mono); font-size: 30px; line-height: 1; margin-top: 10px; }
@@ -181,15 +283,25 @@
     .select, .input, .textarea {
       border: 1px solid var(--border); background: var(--input); color: var(--text);
       border-radius: var(--radius); min-height: 36px; padding: 0 10px; outline: none;
+      transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    }
+    .select:focus, .input:focus, .textarea:focus {
+      border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
     }
     .textarea { min-height: 86px; padding: 10px; resize: vertical; width: 100%; }
     .table-wrap { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); overflow: auto; }
     table { width: 100%; border-collapse: collapse; min-width: 940px; }
     th, td { border-bottom: 1px solid var(--border-soft); padding: 11px 12px; text-align: left; vertical-align: middle; }
     th { color: var(--muted); font-size: 12px; font-weight: 550; background: var(--surface-2); position: sticky; top: 0; z-index: 1; }
+    tr { transition: background var(--transition-fast); }
     tr:hover td { background: color-mix(in srgb, var(--surface-2) 72%, transparent); }
     .title-cell { display: flex; gap: 9px; align-items: center; min-width: 280px; }
-    .title-cell button { color: var(--text); background: transparent; border: 0; padding: 0; text-align: left; font-weight: 560; }
+    .title-cell button {
+      color: var(--text); background: transparent; border: 0; padding: 0; text-align: left; font-weight: 560;
+      transition: color var(--transition-fast);
+    }
+    .title-cell button:hover { color: var(--accent); }
     .subline { color: var(--faint); font-size: 12px; margin-top: 2px; }
     .badge {
       display: inline-flex; align-items: center; gap: 5px; min-height: 22px;
@@ -202,25 +314,39 @@
     .badge.low { color: var(--low); border-color: rgba(55,138,221,.35); }
     .badge.backlog { color: var(--backlog); }
     .progress { height: 8px; background: var(--surface-3); border-radius: 999px; overflow: hidden; min-width: 100px; }
-    .progress span { display: block; height: 100%; background: var(--accent-2); }
+    .progress span { display: block; height: 100%; background: var(--accent-2); transition: width 400ms cubic-bezier(0.4,0,0.2,1); }
     .list { display: grid; gap: 8px; }
     .list-row {
       border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius);
       padding: 11px 12px; display: flex; justify-content: space-between; gap: 12px; align-items: center;
+      transition: background var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
     }
+    .list-row:hover { background: var(--surface-2); transform: translateX(2px); box-shadow: 0 2px 8px rgba(0,0,0,.08); }
     .kanban { display: grid; grid-template-columns: repeat(5, minmax(245px, 1fr)); gap: 12px; overflow-x: auto; padding-bottom: 12px; }
     .kanban-col { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); min-height: 420px; display: flex; flex-direction: column; }
     .kanban-head { padding: 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); color: var(--muted); }
     .kanban-list { padding: 10px; display: grid; gap: 10px; min-height: 360px; align-content: start; }
-    .kanban-card { padding: 11px; border: 1px solid var(--border); background: var(--surface-2); border-radius: var(--radius); cursor: grab; }
-    .kanban-card:active { cursor: grabbing; }
+    .kanban-card {
+      padding: 11px; border: 1px solid var(--border); background: var(--surface-2); border-radius: var(--radius); cursor: grab;
+      transition: box-shadow var(--transition-fast), transform var(--transition-fast), border-color var(--transition-fast);
+    }
+    .kanban-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.14); transform: translateY(-2px); border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); }
+    .kanban-card:active { cursor: grabbing; transform: rotate(1.5deg) scale(1.02); }
     .calendar { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-    .day { min-height: 124px; background: var(--surface); padding: 9px; }
+    .day { min-height: 124px; background: var(--surface); padding: 9px; transition: background var(--transition-fast); }
+    .day:hover { background: var(--surface-2); }
     .day.muted { background: color-mix(in srgb, var(--surface) 80%, var(--bg)); color: var(--faint); }
     .day-num { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
-    .cal-item { display: block; margin: 4px 0; padding: 4px 6px; border-radius: 6px; font-size: 12px; background: var(--surface-2); color: var(--text); border-left: 3px solid var(--accent-2); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .cal-item {
+      display: block; margin: 4px 0; padding: 4px 6px; border-radius: 6px; font-size: 12px;
+      background: var(--surface-2); color: var(--text); border-left: 3px solid var(--accent-2);
+      overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+      transition: background var(--transition-fast), transform var(--transition-fast);
+    }
+    .cal-item:hover { background: var(--surface-3); transform: translateX(2px); }
     .heatmap { display: grid; grid-template-columns: repeat(15, 1fr); gap: 4px; }
-    .heat { aspect-ratio: 1; border-radius: 4px; background: var(--surface-3); }
+    .heat { aspect-ratio: 1; border-radius: 4px; background: var(--surface-3); transition: transform var(--transition-fast); }
+    .heat:hover { transform: scale(1.2); }
     .heat.l1 { background: rgba(99,153,34,.30); } .heat.l2 { background: rgba(99,153,34,.50); }
     .heat.l3 { background: rgba(99,153,34,.70); } .heat.l4 { background: rgba(99,153,34,.95); }
     .detail-inner { padding: 16px; }
@@ -232,11 +358,21 @@
     .modal-backdrop {
       position: fixed; inset: 0; display: none; place-items: center; background: rgba(0,0,0,.54);
       z-index: 50; padding: 20px;
+      backdrop-filter: blur(4px);
     }
-    .modal-backdrop.open { display: grid; }
+    .modal-backdrop.open { display: grid; animation: backdropIn var(--transition-fast) both; }
+    @keyframes backdropIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
     .modal {
       width: min(720px, 100%); max-height: min(760px, 92vh); overflow: auto;
       background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);
+      animation: modalSlideIn var(--transition-base) both;
+    }
+    @keyframes modalSlideIn {
+      from { opacity: 0; transform: translateY(-16px) scale(0.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
     }
     .modal-head, .modal-body, .modal-foot { padding: 16px; }
     .modal-head { border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
@@ -248,9 +384,28 @@
     .auth-card h1 { margin: 0 0 4px; }
     .notice { border: 1px solid rgba(239,159,39,.38); background: rgba(239,159,39,.10); color: var(--high); padding: 10px; border-radius: var(--radius); font-size: 13px; margin: 10px 0; }
     .toast-stack { position: fixed; right: 16px; bottom: 16px; display: grid; gap: 8px; z-index: 80; }
-    .toast { background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); padding: 10px 12px; border-radius: var(--radius); min-width: 240px; }
+    .toast {
+      background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow);
+      padding: 10px 12px; border-radius: var(--radius); min-width: 240px;
+      animation: toastIn 250ms cubic-bezier(0.4,0,0.2,1) both;
+    }
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateX(20px) translateY(4px); }
+      to { opacity: 1; transform: translateX(0) translateY(0); }
+    }
     .empty { color: var(--muted); border: 1px dashed var(--border); border-radius: var(--radius); padding: 28px; text-align: center; background: var(--surface); }
     .bottom-nav { display: none; }
+
+    /* Staggered KPI animation */
+    .kpi-card:nth-child(1) { animation-delay: 0ms; }
+    .kpi-card:nth-child(2) { animation-delay: 40ms; }
+    .kpi-card:nth-child(3) { animation-delay: 80ms; }
+    .kpi-card:nth-child(4) { animation-delay: 120ms; }
+    .kpi-card:nth-child(5) { animation-delay: 160ms; }
+    .kpi-card:nth-child(6) { animation-delay: 200ms; }
+    .kpi-card:nth-child(7) { animation-delay: 240ms; }
+    .kpi-card:nth-child(8) { animation-delay: 280ms; }
+
     @media (max-width: 1100px) {
       .grid.kpi { grid-template-columns: repeat(2, minmax(0,1fr)); }
       .dashboard-grid { grid-template-columns: 1fr; }
@@ -379,6 +534,7 @@
       selected: null,
       selectedRows: new Set(),
       theme: localStorage.getItem("apex-theme") || "dark",
+      sidebarCollapsed: localStorage.getItem("apex-sidebar-collapsed") === "true",
       data: {
         goals: [], projects: [], tasks: [], subtasks: [],
         tags: [], item_tags: [], attachments: [], time_entries: [],
@@ -619,8 +775,9 @@
 
     function renderApp() {
       localStorage.setItem("apex-view", state.view);
+      const appClass = state.sidebarCollapsed ? "app sidebar-collapsed" : "app";
       $("#app").innerHTML = `
-        <div class="app">
+        <div class="${appClass}">
           ${sidebar()}
           <main class="main">
             ${topbar()}
@@ -663,6 +820,7 @@
         </div>`).join("") || `<div class="tree-item"><span>No pinned work</span></div>`;
       return `
         <aside class="sidebar">
+          <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar"><i data-lucide="chevrons-left" width="14"></i></button>
           <div class="brand"><div class="mark">🧠</div><div><h1>Synapses</h1><span>Goal Management</span></div></div>
           <nav class="nav">${nav.map(([id, icon, label, count]) => navButton(id, icon, label, count)).join("")}</nav>
           <section class="sidebar-section"><p class="sidebar-title">Goals</p><div class="tree">${goalTree}</div></section>
@@ -705,6 +863,16 @@
       $("#shortcutHelp")?.addEventListener("click", openShortcuts);
       $("#signOut")?.addEventListener("click", signOutNow);
       $("#timerPill")?.addEventListener("click", () => state.timer && openItem("task", state.timer.task_id));
+      $("#sidebarToggle")?.addEventListener("click", toggleSidebar);
+    }
+
+    function toggleSidebar() {
+      state.sidebarCollapsed = !state.sidebarCollapsed;
+      localStorage.setItem("apex-sidebar-collapsed", state.sidebarCollapsed);
+      const app = $(".app");
+      if (app) {
+        app.classList.toggle("sidebar-collapsed", state.sidebarCollapsed);
+      }
     }
 
     function renderView() {
@@ -809,7 +977,7 @@
       return `<tr>
         <td><input type="checkbox" data-select-row="${level}:${item.id}" ${state.selectedRows.has(`${level}:${item.id}`) ? "checked" : ""}></td>
         <td><div class="title-cell"><span class="dot" style="background:${levelColor(level, item)}"></span><div><button data-open="${level}:${item.id}">${escapeHtml(item.title)}</button><div class="subline">${escapeHtml(parentLine(level, item))}</div></div></div></td>
-        <td>${priorityBadge(item.priority)}</td>
+        <td>${prioritySelect(level, item)}</td>
         <td>${statusSelect(level, item)}</td>
         <td><span class="badge" style="color:${h.color};border-color:${h.border}">${h.text}</span></td>
         <td><div class="progress"><span style="width:${progressOf(level, item)}%"></span></div><div class="subline">${progressOf(level, item)}%</div></td>
@@ -909,6 +1077,7 @@
       $$("[data-restore]").forEach(el => el.addEventListener("click", () => restoreItem(...el.dataset.restore.split(":"))));
       $$("[data-hard-delete]").forEach(el => el.addEventListener("click", () => hardDeleteItem(...el.dataset.hardDelete.split(":"))));
       $$("[data-status]").forEach(el => el.addEventListener("change", () => updateStatus(...el.dataset.status.split(":"), el.value)));
+      $$("[data-priority]").forEach(el => el.addEventListener("change", () => updatePriority(...el.dataset.priority.split(":"), el.value)));
       $("#prevMonth")?.addEventListener("click", () => { state.calendarDate.setMonth(state.calendarDate.getMonth() - 1); renderView(); });
       $("#nextMonth")?.addEventListener("click", () => { state.calendarDate.setMonth(state.calendarDate.getMonth() + 1); renderView(); });
       $("#themeSelect")?.addEventListener("change", e => setTheme(e.target.value));
@@ -965,13 +1134,20 @@
       $("#closeDetail")?.addEventListener("click", () => { state.selected = null; renderApp(); });
       $("#detailForm")?.addEventListener("submit", async e => {
         e.preventDefault();
-        const form = Object.fromEntries(new FormData(e.target).entries());
+        const fd = new FormData(e.target);
+        const form = {};
+        // Explicitly collect all named fields to ensure nothing is missed
+        for (const [key, value] of fd.entries()) {
+          form[key] = value;
+        }
         ["progress", "estimated_minutes", "actual_minutes", "estimated_hours", "actual_hours"].forEach(k => { if (k in form) form[k] = Number(form[k] || 0); });
         if (form.status === "completed") form.completed_at = item.completed_at || nowISO();
         await store.update(level, item.id, form);
         logActivity(level, item.id, "updated", "details", "", "");
         recalcRollups();
-        state.selected = { level, item: findByLevel(level, item.id) };
+        // Re-fetch the item from state to reflect updates
+        const updated = findByLevel(level, item.id);
+        state.selected = { level, item: updated };
         renderApp();
         toast("Saved");
       });
@@ -1066,7 +1242,14 @@
       await store.update(level, id, patch);
       logActivity(level, id, "status_changed", "status", "", status);
       recalcRollups();
-      renderApp();
+      renderView();
+      icons();
+    }
+    async function updatePriority(level, id, priority) {
+      await store.update(level, id, { priority });
+      logActivity(level, id, "priority_changed", "priority", "", priority);
+      renderView();
+      icons();
     }
     async function archiveItem(level, id) {
       await store.remove(level, id);
@@ -1242,6 +1425,7 @@
     function options(list, selected) { return list.map(([v, l]) => `<option value="${v}" ${selected === v ? "selected" : ""}>${l}</option>`).join(""); }
     function statusLabel(value) { return STATUSES.find(x => x[0] === value)?.[1] || value; }
     function priorityBadge(priority) { return `<span class="badge ${priority}">${PRIORITIES.find(x => x[0] === priority)?.[1] || priority}</span>`; }
+    function prioritySelect(level, item) { return `<select class="select" data-priority="${level}:${item.id}" style="min-width:100px">${options(PRIORITIES, item.priority)}</select>`; }
     function statusSelect(level, item) { return `<select class="select" data-status="${level}:${item.id}">${options(STATUSES, item.status)}</select>`; }
     function levelColor(level, item) {
       if (item.color) return item.color;
