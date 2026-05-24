@@ -803,6 +803,7 @@
         ["goals", "target", "Goals", active("goals").length],
         ["projects", "folder-kanban", "Projects", active("projects").length],
         ["tasks", "check-square", "Tasks", active("tasks").length],
+        ["subtasks", "list-checks", "Subtasks", active("subtasks").length],
         ["kanban", "columns-3", "Kanban", countOpenTasks()],
         ["calendar", "calendar-days", "Calendar", deadlines().length],
         ["files", "paperclip", "Files", state.data.attachments.length],
@@ -815,7 +816,14 @@
           <span class="dot" style="background:${escapeHtml(g.color || "#888780")}"></span>
           <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(g.title)}</span>
         </div>`).join("") || `<div class="empty">No goals yet</div>`;
-      const pinned = allItems().filter(x => x.item.pinned).slice(0, 8).map(x => `
+      const subtaskTree = active("subtasks").slice(0, 16).map(s => {
+        const parentTask = findByLevel("task", s.task_id);
+        return `
+        <div class="tree-item" data-open="subtask:${s.id}">
+          <span class="dot" style="background:${s.status === "completed" ? "var(--ok)" : s.status === "in_progress" ? "var(--accent-2)" : "var(--faint)"}"></span>
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(s.title)}</span>
+        </div>`;
+      }).join("") || `<div class="empty">No subtasks yet</div>`;
         <div class="tree-item" data-open="${x.level}:${x.item.id}">
           <i data-lucide="pin" width="14"></i><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(x.item.title)}</span>
         </div>`).join("") || `<div class="tree-item"><span>No pinned work</span></div>`;
@@ -825,6 +833,7 @@
           <div class="brand"><div class="mark">🧠</div><div><h1>Synapses</h1><span>Goal Management</span></div></div>
           <nav class="nav">${nav.map(([id, icon, label, count]) => navButton(id, icon, label, count)).join("")}</nav>
           <section class="sidebar-section"><p class="sidebar-title">Goals</p><div class="tree">${goalTree}</div></section>
+          <section class="sidebar-section"><p class="sidebar-title">Subtasks</p><div class="tree">${subtaskTree}</div></section>
           <section class="sidebar-section"><p class="sidebar-title">Pinned</p><div class="tree">${pinned}</div></section>
           <div class="quick">
             <button class="btn primary" id="quickAdd"><i data-lucide="plus"></i>Quick Capture</button>
