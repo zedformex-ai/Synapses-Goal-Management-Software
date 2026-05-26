@@ -19,6 +19,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
   <style>
     :root {
       --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -406,41 +407,214 @@
     .kpi-card:nth-child(7) { animation-delay: 240ms; }
     .kpi-card:nth-child(8) { animation-delay: 280ms; }
 
+    /* ── Tablet (≤1100px) ── */
     @media (max-width: 1100px) {
       .grid.kpi { grid-template-columns: repeat(2, minmax(0,1fr)); }
       .dashboard-grid { grid-template-columns: 1fr; }
       .content-wrap.detail-open { grid-template-columns: minmax(0,1fr); }
       .detail { position: fixed; right: 0; top: 58px; bottom: 0; width: min(420px, 100%); z-index: 30; box-shadow: var(--shadow); }
     }
+
+    /* ── Mobile (≤760px) ── */
     @media (max-width: 760px) {
-      body { overflow: auto; }
-      .app { grid-template-columns: 1fr; min-height: 100vh; padding-bottom: 62px; }
+      body { overflow: auto; -webkit-tap-highlight-color: transparent; }
+      .app { grid-template-columns: 1fr; min-height: 100vh; padding-bottom: 68px; }
       .sidebar { display: none; }
       .main { min-height: 100vh; grid-template-rows: auto minmax(0,1fr); }
-      .topbar { position: sticky; top: 0; z-index: 20; padding: 8px; }
+
+      /* Topbar */
+      .topbar { position: sticky; top: 0; z-index: 20; padding: 8px 10px; gap: 8px; }
       .crumbs { display: none; }
+      .searchbox { max-width: none; flex: 1; }
+      .searchbox input { font-size: 16px; /* prevents iOS zoom on focus */ }
+      .btn.icon { width: 40px; height: 40px; flex-shrink: 0; }
+
+      /* Content */
       .content { padding: 12px; overflow: visible; }
-      .page-head { flex-direction: column; }
-      .grid.kpi { grid-template-columns: 1fr; }
-      .dashboard-grid { gap: 10px; }
-      .table-toolbar { flex-direction: column; align-items: stretch; }
-      .filters, .actions { width: 100%; }
-      .filters > *, .actions > .btn { flex: 1; }
-      .kanban { grid-template-columns: repeat(5, 82vw); }
-      .calendar { min-width: 720px; }
-      .calendar-scroll { overflow-x: auto; }
-      .form-grid { grid-template-columns: 1fr; }
-      .detail { top: 0; width: 100%; }
-      .bottom-nav {
-        position: fixed; left: 0; right: 0; bottom: 0; height: 60px;
-        display: grid; grid-template-columns: repeat(5, 1fr); background: var(--surface);
-        border-top: 1px solid var(--border); z-index: 40;
+      .page-head { flex-direction: column; gap: 10px; margin-bottom: 12px; }
+      .page-title { font-size: 18px; }
+      .page-subtitle { font-size: 12px; }
+      .actions { width: 100%; }
+      .actions .btn { flex: 1; min-height: 40px; }
+
+      /* KPI grid — 2 cols on mobile, compact height */
+      .grid.kpi { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
+      .kpi-card { min-height: 88px; padding: 10px; }
+      .kpi-value { font-size: 22px; }
+      .kpi-label { font-size: 11px; }
+      .kpi-change { font-size: 11px; }
+      .dashboard-grid { gap: 10px; grid-template-columns: 1fr; }
+
+      /* Tables — hide on mobile, show mobile cards instead */
+      .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      table { min-width: 700px; }
+      th, td { padding: 9px 10px; font-size: 13px; }
+      .table-toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
+      .filters { width: 100%; }
+      .filters .select { flex: 1; min-height: 40px; font-size: 16px; }
+      .actions .btn { min-height: 40px; }
+
+      /* Mobile card list — shown instead of table on small screens */
+      .mobile-card-list { display: grid; gap: 8px; }
+      .mobile-card {
+        border: 1px solid var(--border); border-radius: var(--radius);
+        background: var(--surface); padding: 12px;
+        display: flex; flex-direction: column; gap: 8px;
+        active: background var(--transition-fast);
       }
-      .bottom-nav button { justify-content: center; padding: 6px 0; flex-direction: column; gap: 2px; font-size: 11px; }
-      .bottom-nav button.active { color: var(--text); background: var(--surface-2); }
+      .mobile-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+      .mobile-card-title { font-weight: 600; font-size: 14px; color: var(--text); background: none; border: none; padding: 0; text-align: left; }
+      .mobile-card-meta { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+      .mobile-card-actions { display: flex; gap: 6px; }
+      .mobile-card-actions .btn { height: 34px; font-size: 12px; flex: 1; }
+
+      /* Forms */
+      .form-grid { grid-template-columns: 1fr; }
+      .select, .input { min-height: 42px; font-size: 16px; /* prevent iOS zoom */ }
+      .textarea { font-size: 16px; }
+      label { font-size: 13px; }
+
+      /* Detail panel — full screen on mobile */
+      .detail { position: fixed; top: 0; left: 0; right: 0; bottom: 0; width: 100%; z-index: 35; transform: translateY(100%); border-left: none; border-top: 1px solid var(--border); }
+      .content-wrap.detail-open .detail { transform: translateY(0); }
+      .detail-inner { padding: 12px; padding-bottom: 80px; }
+      .detail-head h2 { font-size: 16px; }
+
+      /* Modal — full screen on mobile */
+      .modal-backdrop { padding: 0; align-items: flex-end; }
+      .modal { width: 100%; max-height: 92vh; border-radius: var(--radius) var(--radius) 0 0; }
+
+      /* Kanban */
+      .kanban { grid-template-columns: repeat(5, 82vw); }
+
+      /* Calendar */
+      .calendar { min-width: 640px; }
+      .calendar-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .day { min-height: 90px; padding: 6px; }
+      .day-num { font-size: 11px; }
+      .cal-item { font-size: 11px; padding: 3px 5px; }
+
+      /* List rows — bigger touch targets */
+      .list-row { padding: 12px; min-height: 52px; }
+      .list-row .btn { min-height: 36px; }
+
+      /* Bottom nav */
+      .bottom-nav {
+        position: fixed; left: 0; right: 0; bottom: 0; height: 64px;
+        display: grid; grid-template-columns: repeat(5, 1fr);
+        background: var(--surface); border-top: 1px solid var(--border); z-index: 40;
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+      .bottom-nav button {
+        justify-content: center; padding: 6px 0; flex-direction: column;
+        gap: 3px; font-size: 10px; min-height: 44px; color: var(--muted);
+        border: none; background: transparent;
+        transition: color var(--transition-fast), background var(--transition-fast);
+      }
+      .bottom-nav button.active { color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+
+      /* More drawer */
+      .more-drawer {
+        position: fixed; left: 0; right: 0; bottom: 64px; z-index: 39;
+        background: var(--surface); border-top: 1px solid var(--border);
+        box-shadow: 0 -8px 32px rgba(0,0,0,.18);
+        display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px;
+        background-clip: content-box;
+        transform: translateY(100%); transition: transform var(--transition-base);
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+      .more-drawer.open { transform: translateY(0); }
+      .more-drawer-item {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 5px; padding: 14px 8px; font-size: 12px; color: var(--muted);
+        background: var(--surface); border: none; min-height: 72px;
+        transition: background var(--transition-fast), color var(--transition-fast);
+      }
+      .more-drawer-item.active { color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+      .more-drawer-item:hover { background: var(--surface-2); color: var(--text); }
+      .more-drawer-backdrop {
+        position: fixed; inset: 0; z-index: 38; display: none; background: rgba(0,0,0,.3);
+      }
+      .more-drawer-backdrop.open { display: block; }
+
+      /* Toast stack */
+      .toast-stack { right: 8px; bottom: 76px; left: 8px; }
+      .toast { min-width: auto; }
+
+      /* Quick capture FAB */
+      .mobile-fab {
+        position: fixed; right: 16px; bottom: 80px; z-index: 37;
+        width: 52px; height: 52px; border-radius: 50%;
+        background: var(--accent); color: var(--bg); border: none;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 4px 20px rgba(0,0,0,.3);
+        transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+      }
+      .mobile-fab:active { transform: scale(0.94); box-shadow: 0 2px 10px rgba(0,0,0,.2); }
+
+      /* Heatmap */
+      .heatmap { grid-template-columns: repeat(10, 1fr); }
+
+      /* Badges smaller */
+      .badge { font-size: 11px; padding: 2px 6px; }
     }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+    }
+
+    /* ── Mind Map / Tree View ── */
+    #treeWrap {
+      border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--surface); position: relative; overflow: hidden;
+      height: calc(100vh - 180px); min-height: 480px;
+    }
+    #treeSvg { width: 100%; height: 100%; display: block; cursor: grab; }
+    #treeSvg:active { cursor: grabbing; }
+    .tree-node circle {
+      stroke-width: 2.5; cursor: pointer;
+      transition: r 0.15s, filter 0.15s;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,.18));
+    }
+    .tree-node circle:hover { filter: drop-shadow(0 4px 12px rgba(0,0,0,.35)); }
+    .tree-node text {
+      pointer-events: none; font-family: var(--font-sans);
+      dominant-baseline: middle;
+    }
+    .tree-link {
+      fill: none; stroke-opacity: 0.45;
+      stroke-linecap: round;
+    }
+    .tree-controls {
+      position: absolute; top: 12px; right: 12px; z-index: 5;
+      display: flex; gap: 6px;
+    }
+    .tree-legend {
+      position: absolute; top: 12px; left: 12px; z-index: 5;
+      display: flex; gap: 14px; align-items: center;
+      font-size: 11px; color: var(--muted);
+      background: color-mix(in srgb, var(--surface) 85%, transparent);
+      backdrop-filter: blur(6px);
+      padding: 6px 10px; border-radius: 99px;
+      border: 1px solid var(--border-soft);
+    }
+    .tree-legend-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      display: inline-block; margin-right: 4px; flex-shrink: 0;
+    }
+    .tree-legend-item { display: flex; align-items: center; }
+    .tree-hint {
+      position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+      font-size: 11px; color: var(--faint);
+      background: color-mix(in srgb, var(--surface) 85%, transparent);
+      backdrop-filter: blur(6px);
+      padding: 4px 12px; border-radius: 99px;
+      border: 1px solid var(--border-soft);
+      white-space: nowrap; pointer-events: none;
+    }
+    @media (max-width: 760px) {
+      #treeWrap { height: calc(100vh - 160px); }
+      .tree-legend { font-size: 10px; gap: 8px; padding: 4px 8px; }
+      .tree-hint { font-size: 10px; }
     }
   </style>
   <link rel="icon" type="image/png" href="/favicon.png">
@@ -799,6 +973,7 @@
             </div>
           </main>
           ${bottomNav()}
+          <button class="mobile-fab" id="mobileFab" title="Quick Capture"><i data-lucide="plus" width="24"></i></button>
         </div>`;
       bindShell();
       renderView();
@@ -814,10 +989,12 @@
         ["goals", "target", "Goals", active("goals").length],
         ["projects", "folder-kanban", "Projects", active("projects").length],
         ["tasks", "check-square", "Tasks", active("tasks").length],
+        ["subtasks", "list-checks", "Subtasks", active("subtasks").length],
         ["kanban", "columns-3", "Kanban", countOpenTasks()],
         ["calendar", "calendar-days", "Calendar", deadlines().length],
         ["files", "paperclip", "Files", state.data.attachments.length],
         ["reports", "bar-chart-3", "Reports", ""],
+        ["mindmap", "git-fork", "Mind Map", ""],
         ["archive", "archive", "Archive", archivedCount()],
         ["settings", "settings", "Settings", ""]
       ];
@@ -826,6 +1003,11 @@
           <span class="dot" style="background:${escapeHtml(g.color || "#888780")}"></span>
           <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(g.title)}</span>
         </div>`).join("") || `<div class="empty">No goals yet</div>`;
+      const subtaskTree = active("subtasks").slice(0, 16).map(s => `
+        <div class="tree-item" data-open="subtask:${s.id}">
+          <span class="dot" style="background:${s.status === "completed" ? "var(--ok)" : s.status === "in_progress" ? "var(--accent-2)" : "var(--faint)"}"></span>
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(s.title)}</span>
+        </div>`).join("") || `<div class="empty">No subtasks yet</div>`;
       const pinned = allItems().filter(x => x.item.pinned).slice(0, 8).map(x => `
         <div class="tree-item" data-open="${x.level}:${x.item.id}">
           <i data-lucide="pin" width="14"></i><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(x.item.title)}</span>
@@ -836,6 +1018,7 @@
           <div class="brand"><div class="mark">🧠</div><div><h1>Synapses</h1><span>Goal Management</span></div></div>
           <nav class="nav">${nav.map(([id, icon, label, count]) => navButton(id, icon, label, count)).join("")}</nav>
           <section class="sidebar-section"><p class="sidebar-title">Goals</p><div class="tree">${goalTree}</div></section>
+          <section class="sidebar-section"><p class="sidebar-title">Subtasks</p><div class="tree">${subtaskTree}</div></section>
           <section class="sidebar-section"><p class="sidebar-title">Pinned</p><div class="tree">${pinned}</div></section>
           <div class="quick">
             <button class="btn primary" id="quickAdd"><i data-lucide="plus"></i>Quick Capture</button>
@@ -848,10 +1031,30 @@
       return `<button class="${state.view === id ? "active" : ""}" data-view="${id}"><i data-lucide="${icon}" width="17"></i><span>${label}</span><span class="count">${count ?? ""}</span></button>`;
     }
     function bottomNav() {
-      return `<nav class="bottom-nav">
-        ${[["dashboard","layout-dashboard","Dash"],["myday","sun","Today"],["tasks","check-square","Tasks"],["kanban","columns-3","Board"],["settings","settings","More"]].map(([id,icon,label]) => `
-          <button class="${state.view === id ? "active" : ""}" data-view="${id}"><i data-lucide="${icon}" width="18"></i><span>${label}</span></button>`).join("")}
-      </nav>`;
+      const moreViews = ["goals","projects","subtasks","calendar","files","reports","mindmap","archive","settings"];
+      const moreActive = moreViews.includes(state.view);
+      return `
+        <div class="more-drawer-backdrop" id="moreBackdrop"></div>
+        <div class="more-drawer" id="moreDrawer">
+          ${[
+            ["goals","target","Goals"],["projects","folder-kanban","Projects"],
+            ["subtasks","list-checks","Subtasks"],["calendar","calendar-days","Calendar"],
+            ["files","paperclip","Files"],["reports","bar-chart-3","Reports"],
+            ["mindmap","git-fork","Mind Map"],["archive","archive","Archive"],["settings","settings","Settings"]
+          ].map(([id,icon,label]) => `
+            <button class="more-drawer-item ${state.view === id ? "active" : ""}" data-view="${id}">
+              <i data-lucide="${icon}" width="22"></i><span>${label}</span>
+            </button>`).join("")}
+        </div>
+        <nav class="bottom-nav">
+          ${[["dashboard","layout-dashboard","Dash"],["myday","sun","Today"],["tasks","check-square","Tasks"],["kanban","columns-3","Board"]].map(([id,icon,label]) => `
+            <button class="${state.view === id ? "active" : ""}" data-view="${id}">
+              <i data-lucide="${icon}" width="20"></i><span>${label}</span>
+            </button>`).join("")}
+          <button class="${moreActive ? "active" : ""}" id="moreBtn">
+            <i data-lucide="${moreActive ? "x" : "grid-2x2"}" width="20"></i><span>More</span>
+          </button>
+        </nav>`;
     }
     function topbar() {
       return `
@@ -876,6 +1079,26 @@
       $("#signOut")?.addEventListener("click", signOutNow);
       $("#timerPill")?.addEventListener("click", () => state.timer && openItem("task", state.timer.task_id));
       $("#sidebarToggle")?.addEventListener("click", toggleSidebar);
+      // More drawer (mobile)
+      $("#moreBtn")?.addEventListener("click", () => {
+        const drawer = $("#moreDrawer");
+        const backdrop = $("#moreBackdrop");
+        if (!drawer) return;
+        const isOpen = drawer.classList.contains("open");
+        drawer.classList.toggle("open", !isOpen);
+        backdrop.classList.toggle("open", !isOpen);
+      });
+      $("#moreBackdrop")?.addEventListener("click", () => {
+        $("#moreDrawer")?.classList.remove("open");
+        $("#moreBackdrop")?.classList.remove("open");
+      });
+      // Close drawer when a view is selected from it
+      $$(".more-drawer-item[data-view]").forEach(btn => btn.addEventListener("click", () => {
+        $("#moreDrawer")?.classList.remove("open");
+        $("#moreBackdrop")?.classList.remove("open");
+      }));
+      // Mobile FAB
+      $("#mobileFab")?.addEventListener("click", () => openQuickModal(defaultLevelForView()));
     }
 
     function toggleSidebar() {
@@ -902,13 +1125,248 @@
         files: renderFiles,
         reports: renderReports,
         archive: renderArchive,
-        settings: renderSettings
+        settings: renderSettings,
+        mindmap: renderMindMap
       };
       content.innerHTML = (views[state.view] || renderDashboard)();
       bindContent();
       icons();
       if (state.view === "dashboard" || state.view === "reports") renderCharts();
       if (state.view === "kanban") setupKanban();
+      if (state.view === "mindmap") initMindMap();
+    }
+
+
+    function renderMindMap() {
+      return `
+        ${pageHead("Mind Map", "Click any node to expand or collapse its children. Double-click to open the detail panel.", "")}
+        <div id="treeWrap">
+          <div class="tree-legend">
+            <span class="tree-legend-item"><span class="tree-legend-dot" style="background:#d5bf75"></span>Goal</span>
+            <span class="tree-legend-item"><span class="tree-legend-dot" style="background:#378add"></span>Project</span>
+            <span class="tree-legend-item"><span class="tree-legend-dot" style="background:#1d9e75"></span>Task</span>
+            <span class="tree-legend-item"><span class="tree-legend-dot" style="background:#ef9f27"></span>Subtask</span>
+          </div>
+          <div class="tree-controls">
+            <button class="btn icon" id="treeZoomIn" title="Zoom in"><i data-lucide="zoom-in"></i></button>
+            <button class="btn icon" id="treeZoomOut" title="Zoom out"><i data-lucide="zoom-out"></i></button>
+            <button class="btn icon" id="treeReset" title="Fit to screen"><i data-lucide="maximize-2"></i></button>
+          </div>
+          <svg id="treeSvg">
+            <defs>
+              <marker id="arrowhead" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L6,3 L0,6 Z" fill="var(--border)" opacity="0.5"/>
+              </marker>
+            </defs>
+            <g id="treeG"></g>
+          </svg>
+          <div class="tree-hint">Click to expand · Double-click to open · Scroll to zoom · Drag to pan</div>
+        </div>`;
+    }
+
+    function initMindMap() {
+      const wrap = $("#treeWrap");
+      const svgEl = $("#treeSvg");
+      if (!wrap || !svgEl || typeof d3 === "undefined") {
+        if (typeof d3 === "undefined") {
+          wrap && (wrap.innerHTML += '<div class="empty" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)">D3.js failed to load. Check your connection.</div>');
+        }
+        return;
+      }
+
+      const COLORS = { root: "#6e6b64", goal: "#d5bf75", project: "#378add", task: "#1d9e75", subtask: "#ef9f27" };
+      const RADII  = { root: 18, goal: 14, project: 11, task: 9, subtask: 7 };
+      const FONT   = { root: 13, goal: 12, project: 11, task: 10, subtask: 9 };
+      const isDark = document.documentElement.dataset.theme !== "light";
+      const textColor = isDark ? "#f0efe8" : "#1f1e1a";
+      const linkColor = isDark ? "#313139" : "#d3d0c8";
+
+      // Build hierarchy data
+      function buildData() {
+        const root = { id: "root", name: "Synapses", level: "root", children: [] };
+        active("goals").forEach(g => {
+          const gNode = { id: g.id, name: g.title, level: "goal", item: g,
+            _color: g.color || COLORS.goal, _children: [] };
+          active("projects").filter(p => p.goal_id === g.id).forEach(p => {
+            const pNode = { id: p.id, name: p.title, level: "project", item: p,
+              _color: p.color || COLORS.project, _children: [] };
+            active("tasks").filter(t => t.project_id === p.id).forEach(t => {
+              const tNode = { id: t.id, name: t.title, level: "task", item: t,
+                _color: COLORS.task, _children: [] };
+              active("subtasks").filter(s => s.task_id === t.id).forEach(s => {
+                tNode._children.push({ id: s.id, name: s.title, level: "subtask", item: s,
+                  _color: COLORS.subtask, _children: [] });
+              });
+              pNode._children.push(tNode);
+            });
+            gNode._children.push(pNode);
+          });
+          // Goals start expanded, deeper levels collapsed
+          gNode.children = gNode._children;
+          gNode._children = null;
+          root.children.push(gNode);
+        });
+        return root;
+      }
+
+      const W = wrap.offsetWidth || 900;
+      const H = wrap.offsetHeight || 600;
+      const svg = d3.select("#treeSvg").attr("width", W).attr("height", H);
+      const g = d3.select("#treeG");
+
+      // Zoom behaviour
+      const zoom = d3.zoom().scaleExtent([0.15, 3]).on("zoom", e => g.attr("transform", e.transform));
+      svg.call(zoom);
+
+      let i = 0;
+      const duration = 260;
+      const tree = d3.tree().nodeSize([36, 220]);
+      let root = d3.hierarchy(buildData(), d => d.children);
+      root.x0 = H / 2;
+      root.y0 = 0;
+
+      function collapse(d) { if (d.children) { d._children = d.children; d.children = null; } }
+      function expand(d)   { if (d._children) { d.children = d._children; d._children = null; } }
+
+      function update(source) {
+        const nodes = root.descendants();
+        const links = root.links();
+        tree(root);
+
+        // Normalize to start from left margin
+        const linkGen = d3.linkHorizontal().x(d => d.y).y(d => d.x);
+
+        // ── Links ──
+        const link = g.selectAll(".tree-link").data(links, d => d.target.id || (d.target.id = ++i));
+        const linkEnter = link.enter().append("path")
+          .attr("class", "tree-link")
+          .attr("stroke", linkColor)
+          .attr("stroke-width", d => Math.max(1, 3 - (d.target.depth || 0)))
+          .attr("d", () => {
+            const o = { x: source.x0, y: source.y0 };
+            return linkGen({ source: o, target: o });
+          });
+        link.merge(linkEnter).transition().duration(duration)
+          .attr("d", linkGen)
+          .attr("stroke", linkColor);
+        link.exit().transition().duration(duration)
+          .attr("d", () => { const o = { x: source.x, y: source.y }; return linkGen({ source: o, target: o }); })
+          .remove();
+
+        // ── Nodes ──
+        const node = g.selectAll(".tree-node").data(nodes, d => d.id || (d.id = ++i));
+        const nodeEnter = node.enter().append("g")
+          .attr("class", "tree-node")
+          .attr("transform", () => `translate(${source.y0},${source.x0})`)
+          .style("opacity", 0);
+
+        nodeEnter.append("circle")
+          .attr("r", d => RADII[d.data.level] || 8)
+          .attr("fill", d => d.data._color || COLORS[d.data.level] || "#888")
+          .attr("stroke", d => {
+            const c = d3.color(d.data._color || COLORS[d.data.level] || "#888");
+            return c ? c.darker(0.7).formatHex() : "#555";
+          })
+          .attr("stroke-width", 2)
+          .on("click", (event, d) => {
+            event.stopPropagation();
+            if (d.data.level === "root") return;
+            if (d.children) collapse(d); else expand(d);
+            update(d);
+          })
+          .on("dblclick", (event, d) => {
+            event.stopPropagation();
+            if (d.data.item && d.data.level !== "root") {
+              openItem(d.data.level, d.data.id);
+            }
+          });
+
+        // Collapsed indicator ring
+        nodeEnter.append("circle")
+          .attr("class", "collapse-ring")
+          .attr("r", d => (RADII[d.data.level] || 8) + 4)
+          .attr("fill", "none")
+          .attr("stroke", d => d.data._color || COLORS[d.data.level] || "#888")
+          .attr("stroke-width", 1.5)
+          .attr("stroke-dasharray", "3,3")
+          .attr("opacity", 0)
+          .style("pointer-events", "none");
+
+        // Label — right side for non-root, or check depth
+        nodeEnter.append("text")
+          .attr("dy", "0.35em")
+          .attr("x", d => (RADII[d.data.level] || 8) + 7)
+          .attr("text-anchor", "start")
+          .attr("font-size", d => FONT[d.data.level] || 10)
+          .attr("fill", textColor)
+          .attr("font-weight", d => d.data.level === "goal" ? 600 : d.data.level === "project" ? 500 : 400)
+          .text(d => {
+            const maxLen = d.data.level === "root" ? 14 : d.data.level === "goal" ? 26 : d.data.level === "project" ? 24 : 22;
+            return d.data.name.length > maxLen ? d.data.name.slice(0, maxLen) + "…" : d.data.name;
+          });
+
+        // Child count badge
+        nodeEnter.append("text")
+          .attr("class", "child-count")
+          .attr("dy", "0.35em")
+          .attr("x", 0)
+          .attr("text-anchor", "middle")
+          .attr("font-size", 8)
+          .attr("fill", "white")
+          .attr("font-weight", 700)
+          .style("pointer-events", "none");
+
+        const nodeMerge = node.merge(nodeEnter);
+        nodeMerge.transition().duration(duration)
+          .attr("transform", d => `translate(${d.y},${d.x})`)
+          .style("opacity", 1);
+
+        // Update collapse ring visibility
+        nodeMerge.select(".collapse-ring")
+          .transition().duration(duration)
+          .attr("opacity", d => (d._children && d._children.length) ? 0.6 : 0);
+
+        // Update child count
+        nodeMerge.select(".child-count")
+          .text(d => (d._children && d._children.length) ? d._children.length : "");
+
+        node.exit().transition().duration(duration)
+          .attr("transform", () => `translate(${source.y},${source.x})`)
+          .style("opacity", 0).remove();
+
+        // Save positions for next transition
+        nodes.forEach(d => { d.x0 = d.x; d.y0 = d.y; });
+      }
+
+      update(root);
+
+      // Auto-fit on first render
+      setTimeout(() => {
+        const bounds = g.node().getBBox();
+        if (!bounds.width) return;
+        const pad = 60;
+        const scaleX = (W - pad * 2) / bounds.width;
+        const scaleY = (H - pad * 2) / bounds.height;
+        const scale = Math.min(scaleX, scaleY, 1.2);
+        const tx = (W - bounds.width * scale) / 2 - bounds.x * scale;
+        const ty = (H - bounds.height * scale) / 2 - bounds.y * scale;
+        svg.transition().duration(400).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+      }, 300);
+
+      // Controls
+      $("#treeZoomIn")?.addEventListener("click",  () => svg.transition().duration(220).call(zoom.scaleBy, 1.35));
+      $("#treeZoomOut")?.addEventListener("click", () => svg.transition().duration(220).call(zoom.scaleBy, 0.75));
+      $("#treeReset")?.addEventListener("click",   () => {
+        const bounds = g.node().getBBox();
+        if (!bounds.width) return;
+        const pad = 60;
+        const scaleX = (W - pad * 2) / bounds.width;
+        const scaleY = (H - pad * 2) / bounds.height;
+        const scale = Math.min(scaleX, scaleY, 1.2);
+        const tx = (W - bounds.width * scale) / 2 - bounds.x * scale;
+        const ty = (H - bounds.height * scale) / 2 - bounds.y * scale;
+        svg.transition().duration(350).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+      });
     }
 
     function renderDashboard() {
@@ -976,12 +1434,45 @@
     }
 
     function itemTable(level, rows) {
-      return `<table>
-        <thead><tr>
-          <th style="width:42px"><input type="checkbox" id="selectAll"></th><th>Title</th><th>Priority</th><th>Status</th><th>Deadline</th><th>Progress</th><th>Time</th><th>Actions</th>
-        </tr></thead>
-        <tbody>${rows.map(item => row(level, item)).join("")}</tbody>
-      </table>`;
+      return `
+        <div class="mobile-card-list" id="mobileList" style="display:none">
+          ${rows.map(item => mobileCard(level, item)).join("")}
+        </div>
+        <table id="desktopTable">
+          <thead><tr>
+            <th style="width:42px"><input type="checkbox" id="selectAll"></th><th>Title</th><th>Priority</th><th>Status</th><th>Deadline</th><th>Progress</th><th>Time</th><th>Actions</th>
+          </tr></thead>
+          <tbody>${rows.map(item => row(level, item)).join("")}</tbody>
+        </table>
+        <script>
+          (function(){
+            var isMobile = window.innerWidth <= 760;
+            var ml = document.getElementById('mobileList');
+            var dt = document.getElementById('desktopTable');
+            if (ml && dt) { ml.style.display = isMobile ? 'grid' : 'none'; dt.style.display = isMobile ? 'none' : 'table'; }
+          })();
+        <\/script>`;
+    }
+    function mobileCard(level, item) {
+      const h = health(item);
+      return \`<div class="mobile-card">
+        <div class="mobile-card-header">
+          <div style="flex:1;min-width:0">
+            <button class="mobile-card-title" data-open="\${level}:\${item.id}">\${escapeHtml(item.title)}</button>
+            <div class="subline">\${escapeHtml(parentLine(level, item))}</div>
+          </div>
+          \${priorityBadge(item.priority)}
+        </div>
+        <div class="mobile-card-meta">
+          \${statusSelect(level, item)}
+          <span class="badge" style="color:\${h.color};border-color:\${h.border}">\${h.text}</span>
+        </div>
+        <div class="progress" style="margin-top:2px"><span style="width:\${progressOf(level,item)}%"></span></div>
+        <div class="mobile-card-actions">
+          <button class="btn" data-open="\${level}:\${item.id}"><i data-lucide="pencil" width="14"></i>Open</button>
+          <button class="btn icon danger" data-archive="\${level}:\${item.id}"><i data-lucide="archive" width="14"></i></button>
+        </div>
+      </div>\`;
     }
     function row(level, item) {
       const h = health(item);
