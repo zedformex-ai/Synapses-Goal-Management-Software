@@ -18,7 +18,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
   <style>
     :root {
       --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -596,7 +596,12 @@
         });
       },
       persistLocal() {
-        if (!configured) localStorage.setItem("apex-demo-data", JSON.stringify(state.data));
+        if (!configured) {
+          clearTimeout(this._persistTimer);
+          this._persistTimer = setTimeout(() => {
+            try { localStorage.setItem("apex-demo-data", JSON.stringify(state.data)); } catch(e) {}
+          }, 400);
+        }
       },
       async insert(levelOrTable, row) {
         const table = TABLES[levelOrTable] || levelOrTable;
@@ -610,7 +615,7 @@
           this.persistLocal();
           return payload;
         }
-        const { data, error } = await sb.from(table).insert(payload).select().single();
+        const { data, error } = await withTimeout(sb.from(table).insert(payload).select().single());
         if (error) throw error;
         state.data[table].push(data);
         return data;
@@ -624,7 +629,7 @@
           this.persistLocal();
           return row;
         }
-        const { data, error } = await sb.from(table).update(clean).eq("id", id).select().single();
+        const { data, error } = await withTimeout(sb.from(table).update(clean).eq("id", id).select().single());
         if (error) throw error;
         const idx = state.data[table].findIndex(x => x.id === id);
         if (idx >= 0) state.data[table][idx] = data;
@@ -643,7 +648,7 @@
           this.persistLocal();
           return;
         }
-        const { error } = await sb.from(table).delete().eq("id", id);
+        const { error } = await withTimeout(sb.from(table).delete().eq("id", id));
         if (error) throw error;
         state.data[table] = state.data[table].filter(x => x.id !== id);
       }
@@ -674,10 +679,16 @@
         renderConfigRequired();
         return;
       }
+      let _appRendered = false;
       sb.auth.onAuthStateChange(async (_event, session) => {
         state.user = session?.user || null;
-        if (state.user) {
-          await store.loadAll();
+        if (state.user && !_appRendered) {
+          _appRendered = true;
+          try {
+            await withTimeout(store.loadAll(), 20000);
+          } catch(e) {
+            toast("Could not load data: " + e.message);
+          }
           renderApp();
         }
       });
@@ -803,7 +814,6 @@
         ["goals", "target", "Goals", active("goals").length],
         ["projects", "folder-kanban", "Projects", active("projects").length],
         ["tasks", "check-square", "Tasks", active("tasks").length],
-        ["subtasks", "list-checks", "Subtasks", active("subtasks").length],
         ["kanban", "columns-3", "Kanban", countOpenTasks()],
         ["calendar", "calendar-days", "Calendar", deadlines().length],
         ["files", "paperclip", "Files", state.data.attachments.length],
@@ -816,11 +826,6 @@
           <span class="dot" style="background:${escapeHtml(g.color || "#888780")}"></span>
           <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(g.title)}</span>
         </div>`).join("") || `<div class="empty">No goals yet</div>`;
-      const subtaskTree = active("subtasks").slice(0, 16).map(s => `
-        <div class="tree-item" data-open="subtask:${s.id}">
-          <span class="dot" style="background:${s.status === "completed" ? "var(--ok)" : s.status === "in_progress" ? "var(--accent-2)" : "var(--faint)"}"></span>
-          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(s.title)}</span>
-        </div>`).join("") || `<div class="empty">No subtasks yet</div>`;
       const pinned = allItems().filter(x => x.item.pinned).slice(0, 8).map(x => `
         <div class="tree-item" data-open="${x.level}:${x.item.id}">
           <i data-lucide="pin" width="14"></i><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(x.item.title)}</span>
@@ -831,7 +836,6 @@
           <div class="brand"><div class="mark">🧠</div><div><h1>Synapses</h1><span>Goal Management</span></div></div>
           <nav class="nav">${nav.map(([id, icon, label, count]) => navButton(id, icon, label, count)).join("")}</nav>
           <section class="sidebar-section"><p class="sidebar-title">Goals</p><div class="tree">${goalTree}</div></section>
-          <section class="sidebar-section"><p class="sidebar-title">Subtasks</p><div class="tree">${subtaskTree}</div></section>
           <section class="sidebar-section"><p class="sidebar-title">Pinned</p><div class="tree">${pinned}</div></section>
           <div class="quick">
             <button class="btn primary" id="quickAdd"><i data-lucide="plus"></i>Quick Capture</button>
@@ -1142,22 +1146,25 @@
       $("#closeDetail")?.addEventListener("click", () => { state.selected = null; renderApp(); });
       $("#detailForm")?.addEventListener("submit", async e => {
         e.preventDefault();
-        const fd = new FormData(e.target);
-        const form = {};
-        // Explicitly collect all named fields to ensure nothing is missed
-        for (const [key, value] of fd.entries()) {
-          form[key] = value;
+        const saveBtn = e.target.querySelector('[type="submit"]');
+        if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = "Saving…"; }
+        try {
+          const fd = new FormData(e.target);
+          const form = {};
+          for (const [key, value] of fd.entries()) { form[key] = value; }
+          ["progress", "estimated_minutes", "actual_minutes", "estimated_hours", "actual_hours"].forEach(k => { if (k in form) form[k] = Number(form[k] || 0); });
+          if (form.status === "completed") form.completed_at = item.completed_at || nowISO();
+          await store.update(level, item.id, form);
+          logActivity(level, item.id, "updated", "details", "", "");
+          recalcRollups();
+          const updated = findByLevel(level, item.id);
+          state.selected = { level, item: updated };
+          renderApp();
+          toast("Saved");
+        } catch(err) {
+          if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<i data-lucide="save"></i>Save Changes'; icons(); }
+          toast("Error: " + err.message);
         }
-        ["progress", "estimated_minutes", "actual_minutes", "estimated_hours", "actual_hours"].forEach(k => { if (k in form) form[k] = Number(form[k] || 0); });
-        if (form.status === "completed") form.completed_at = item.completed_at || nowISO();
-        await store.update(level, item.id, form);
-        logActivity(level, item.id, "updated", "details", "", "");
-        recalcRollups();
-        // Re-fetch the item from state to reflect updates
-        const updated = findByLevel(level, item.id);
-        state.selected = { level, item: updated };
-        renderApp();
-        toast("Saved");
       });
       $("#toggleTimer")?.addEventListener("click", () => toggleTimer(item.id));
       $("#duplicateDetail")?.addEventListener("click", () => duplicateItem(level, item.id));
@@ -1220,24 +1227,31 @@
     function closeQuick() { $("#quickModal").classList.remove("open"); $("#quickModal").innerHTML = ""; }
     async function createQuick(e) {
       e.preventDefault();
-      const form = Object.fromEntries(new FormData(e.target).entries());
-      const level = form.level;
-      delete form.level;
-      const row = {
-        ...form, title: form.title.trim(), description: form.description || "", due_date: form.due_date || null,
-        progress: form.status === "completed" ? 100 : 0, progress_mode: "manual", deadline_freq: "once",
-        sort_order: active(TABLES[level]).length + 1, pinned: false, created_at: nowISO(), updated_at: nowISO()
-      };
-      if (level === "goal") { row.color = randomColor(); row.estimated_hours = 0; row.actual_hours = 0; }
-      if (level === "project") { row.color = randomColor(); row.estimated_hours = 0; row.actual_hours = 0; }
-      if (level === "task") { row.estimated_minutes = 0; row.actual_minutes = 0; row.kanban_column = row.status; }
-      const created = await store.insert(level, row);
-      logActivity(level, created.id, "created", "title", "", created.title);
-      recalcRollups();
-      closeQuick();
-      state.selected = { level, item: created };
-      renderApp();
-      toast(`${label(level)} created`);
+      const submitBtn = e.target.querySelector('[type="submit"]');
+      if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Saving…"; }
+      try {
+        const form = Object.fromEntries(new FormData(e.target).entries());
+        const level = form.level;
+        delete form.level;
+        const row = {
+          ...form, title: form.title.trim(), description: form.description || "", due_date: form.due_date || null,
+          progress: form.status === "completed" ? 100 : 0, progress_mode: "manual", deadline_freq: "once",
+          sort_order: active(TABLES[level]).length + 1, pinned: false, created_at: nowISO(), updated_at: nowISO()
+        };
+        if (level === "goal") { row.color = randomColor(); row.estimated_hours = 0; row.actual_hours = 0; }
+        if (level === "project") { row.color = randomColor(); row.estimated_hours = 0; row.actual_hours = 0; }
+        if (level === "task") { row.estimated_minutes = 0; row.actual_minutes = 0; row.kanban_column = row.status; }
+        const created = await store.insert(level, row);
+        logActivity(level, created.id, "created", "title", "", created.title);
+        recalcRollups();
+        closeQuick();
+        state.selected = { level, item: created };
+        renderApp();
+        toast(`${label(level)} created`);
+      } catch(err) {
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i data-lucide="plus"></i>Create'; icons(); }
+        toast("Error: " + err.message);
+      }
     }
 
     async function openItem(level, id) {
@@ -1245,56 +1259,65 @@
       renderApp();
     }
     async function updateStatus(level, id, status) {
-      const patch = { status, kanban_column: level === "task" ? status : undefined };
-      if (status === "completed") patch.completed_at = nowISO();
-      await store.update(level, id, patch);
-      logActivity(level, id, "status_changed", "status", "", status);
-      recalcRollups();
-      renderView();
-      icons();
+      try {
+        const patch = { status, kanban_column: level === "task" ? status : undefined };
+        if (status === "completed") patch.completed_at = nowISO();
+        await store.update(level, id, patch);
+        logActivity(level, id, "status_changed", "status", "", status);
+        recalcRollups();
+        renderView();
+      } catch(err) { toast("Error: " + err.message); renderView(); }
     }
     async function updatePriority(level, id, priority) {
-      await store.update(level, id, { priority });
-      logActivity(level, id, "priority_changed", "priority", "", priority);
-      renderView();
-      icons();
+      try {
+        await store.update(level, id, { priority });
+        logActivity(level, id, "priority_changed", "priority", "", priority);
+        renderView();
+      } catch(err) { toast("Error: " + err.message); renderView(); }
     }
     async function archiveItem(level, id) {
-      await store.remove(level, id);
-      logActivity(level, id, "archived", "status", "", "archived");
-      state.selected = null;
-      renderApp();
-      toast("Archived");
+      try {
+        await store.remove(level, id);
+        logActivity(level, id, "archived", "status", "", "archived");
+        state.selected = null;
+        renderApp();
+        toast("Archived");
+      } catch(err) { toast("Error: " + err.message); }
     }
     async function restoreItem(level, id) {
-      await store.restore(level, id);
-      renderApp();
-      toast("Restored");
+      try { await store.restore(level, id); renderApp(); toast("Restored"); }
+      catch(err) { toast("Error: " + err.message); }
     }
     async function hardDeleteItem(level, id) {
       if (!confirm("Permanently delete this item?")) return;
-      await store.hardDelete(level, id);
-      renderApp();
+      try { await store.hardDelete(level, id); renderApp(); }
+      catch(err) { toast("Error: " + err.message); }
     }
     async function duplicateItem(level, id) {
-      const item = findByLevel(level, id);
-      const clone = { ...item, title: `${item.title} Copy`, archived_at: null, completed_at: null, created_at: nowISO(), updated_at: nowISO() };
-      delete clone.id;
-      const created = await store.insert(level, clone);
-      state.selected = { level, item: created };
-      renderApp();
-      toast("Duplicated");
+      try {
+        const item = findByLevel(level, id);
+        const clone = { ...item, title: `${item.title} Copy`, archived_at: null, completed_at: null, created_at: nowISO(), updated_at: nowISO() };
+        delete clone.id;
+        const created = await store.insert(level, clone);
+        state.selected = { level, item: created };
+        renderApp();
+        toast("Duplicated");
+      } catch(err) { toast("Error: " + err.message); }
     }
     async function bulkUpdate(patch) {
-      for (const key of state.selectedRows) await store.update(...key.split(":"), patch);
-      state.selectedRows.clear();
-      recalcRollups();
-      renderApp();
+      try {
+        for (const key of state.selectedRows) await store.update(...key.split(":"), patch);
+        state.selectedRows.clear();
+        recalcRollups();
+        renderApp();
+      } catch(err) { toast("Error: " + err.message); renderApp(); }
     }
     async function bulkArchive() {
-      for (const key of state.selectedRows) await store.remove(...key.split(":"));
-      state.selectedRows.clear();
-      renderApp();
+      try {
+        for (const key of state.selectedRows) await store.remove(...key.split(":"));
+        state.selectedRows.clear();
+        renderApp();
+      } catch(err) { toast("Error: " + err.message); renderApp(); }
     }
 
     function setupKanban() {
@@ -1306,10 +1329,12 @@
           onEnd: async evt => {
             const status = evt.to.dataset.kanban;
             const id = evt.item.dataset.taskId;
-            await store.update("task", id, { status, kanban_column: status, sort_order: evt.newIndex + 1, completed_at: status === "completed" ? nowISO() : null });
-            recalcRollups();
-            renderView();
-            toast("Task moved");
+            try {
+              await store.update("task", id, { status, kanban_column: status, sort_order: evt.newIndex + 1, completed_at: status === "completed" ? nowISO() : null });
+              recalcRollups();
+              renderView();
+              toast("Task moved");
+            } catch(err) { toast("Error: " + err.message); }
           }
         });
       });
@@ -1585,7 +1610,24 @@
       $("#toastStack").appendChild(el);
       setTimeout(() => el.remove(), 4200);
     }
-    function icons() { lucide?.createIcons?.({ attrs: { "stroke-width": 1.75 } }); }
+    // Debounced icons — called many times per cycle but only executes once per frame
+    let _iconsPending = false;
+    function icons() {
+      if (_iconsPending) return;
+      _iconsPending = true;
+      requestAnimationFrame(() => {
+        _iconsPending = false;
+        try { if (typeof lucide !== "undefined" && lucide.createIcons) lucide.createIcons({ attrs: { "stroke-width": 1.75 } }); } catch(e) {}
+      });
+    }
+
+    // Wrap Supabase promises with a timeout — prevents infinite hangs on free-tier connections
+    function withTimeout(promise, ms = 12000) {
+      return Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Request timed out — check your connection and try again.")), ms))
+      ]);
+    }
 
     document.addEventListener("keydown", e => {
       const cmd = e.ctrlKey || e.metaKey;
